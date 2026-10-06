@@ -35,11 +35,26 @@ await page.evaluate(gloss => window.startGloss(gloss), input.gloss);
 await page.waitForFunction(() => JSON.parse(document.body.dataset.playing || "[]")[0] === "True", null, { timeout: input.timeoutMs });
 process.stderr.write("stage=animation-started\n");
 const animationStarted = performance.now();
-await page.waitForFunction(() => {
-  const state=JSON.parse(document.body.dataset.playing || "[]");
-  const counter=JSON.parse(document.body.dataset.counter || "[0,0]");
-  return state[0]==="False"&&state[3]==="False"&&counter[1]>0&&counter[0]===counter[1];
-}, null, { timeout: input.timeoutMs });
+let lastCurrent = -1;
+const progressInterval = setInterval(async () => {
+  try {
+    const counter = await page.locator("body").evaluate(el => JSON.parse(el.dataset.counter || "[0,0]"));
+    if (Array.isArray(counter) && counter.length >= 2 && counter[1] > 0 && counter[0] !== lastCurrent) {
+      lastCurrent = counter[0];
+      process.stderr.write(`progress current=${counter[0]} total=${counter[1]}\n`);
+    }
+  } catch {}
+}, 500);
+
+try {
+  await page.waitForFunction(() => {
+    const state = JSON.parse(document.body.dataset.playing || "[]");
+    const counter = JSON.parse(document.body.dataset.counter || "[0,0]");
+    return state[0] === "False" && state[3] === "False" && counter[1] > 0 && counter[0] === counter[1];
+  }, null, { timeout: input.timeoutMs });
+} finally {
+  clearInterval(progressInterval);
+}
 process.stderr.write("stage=animation-complete\n");
 const animationSeconds = (performance.now() - animationStarted) / 1000;
 const counter = await page.locator("body").evaluate(el => JSON.parse(el.dataset.counter || "[0,0]"));

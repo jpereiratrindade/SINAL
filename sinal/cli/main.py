@@ -302,6 +302,11 @@ def _parser() -> argparse.ArgumentParser:
         "--margin", type=int, default=24, help="margem em pixels (padrão: %(default)s)"
     )
     compose_parser.add_argument(
+        "--allow-drift",
+        action="store_true",
+        help="permite compor mesmo com diferença de duração entre Libras e vídeo original",
+    )
+    compose_parser.add_argument(
         "--overwrite", action="store_true", help="substitui o arquivo de saída"
     )
 
@@ -581,10 +586,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
             from sinal.render.vlibras import read_render_provenance
 
             provenance = read_render_provenance(args.avatar)
-            if provenance is not None and provenance.get("timeline_synchronized") is False:
+            if not args.allow_drift and provenance is not None and provenance.get("timeline_synchronized") is False:
                 raise LibrasRenderError(
                     "composição bloqueada: o sidecar informa que a Libras não está "
-                    "sincronizada à mídia; não acelere sinais para fazê-los caber"
+                    "sincronizada à mídia; use --allow-drift para autorizar a composição"
                 )
             destination = compose_libras_video(
                 args.media,
@@ -593,6 +598,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 position=args.position,
                 scale=args.scale,
                 margin=args.margin,
+                allow_drift=args.allow_drift,
                 overwrite=args.overwrite,
             )
             print(f"Libras video composed: {destination}")

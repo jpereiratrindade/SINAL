@@ -150,6 +150,7 @@ class CliTests(unittest.TestCase):
             position="bottom-left",
             scale=0.28,
             margin=24,
+            allow_drift=False,
             overwrite=False,
         )
         self.assertIn("Libras video composed: final.mp4", output.getvalue())

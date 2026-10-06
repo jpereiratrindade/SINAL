@@ -49,6 +49,7 @@ def compose_libras_video(
     margin: int = 24,
     overwrite: bool = False,
     duration_tolerance: float = 1.0,
+    allow_drift: bool = False,
 ) -> Path:
     """Sobrepõe um avatar com a mesma timeline e preserva áudio e legendas."""
 
@@ -82,7 +83,8 @@ def compose_libras_video(
     base_size = _require_video(source_info, "a mídia de origem")
     avatar_size = _require_video(avatar_info, "o vídeo do avatar")
     if (
-        source_info.duration_seconds is not None
+        not allow_drift
+        and source_info.duration_seconds is not None
         and avatar_info.duration_seconds is not None
         and abs(source_info.duration_seconds - avatar_info.duration_seconds)
         > duration_tolerance

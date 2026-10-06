@@ -54,6 +54,16 @@ class _QuietHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
 
+import re
+import sys
+
+def _format_vlibras_progress(current: int, total: int, avatar: str, width: int = 24) -> str:
+    percent = (current / total) * 100.0 if total > 0 else 0.0
+    filled = int(width * current / total) if total > 0 else 0
+    bar = "█" * filled + "░" * (width - filled)
+    return f"\r\033[K[VLibras] Avatar {avatar.capitalize()}: [{bar}] {current}/{total} sinais ({percent:.0f}%)"
+
+
 class VlibrasWebRuntime:
     """Runtime local de um checkout compilado do widget oficial VLibras."""
 
@@ -166,35 +176,88 @@ class VlibrasWebRuntime:
             "timeoutMs": int(self.timeout_seconds * 1000),
             "dictionaryUrl": "https://dicionario2.vlibras.gov.br/2018.3.1/WEBGL/",
         }
+        process = None
+        stderr_lines: list[str] = []
+        is_tty = sys.stderr.isatty()
+
+        def stream_stderr(proc: subprocess.Popen[str]) -> None:
+            nonlocal stderr_lines
+            if proc.stderr is None:
+                return
+            for raw_line in iter(proc.stderr.readline, ""):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                stderr_lines.append(line)
+                if line.startswith("stage="):
+                    stage = line.split("=", 1)[1]
+                    stage_map = {
+                        "page-created": "[VLibras] Inicializando navegador Chromium...",
+                        "page-content-loaded": "[VLibras] Carregando interface e componentes...",
+                        "unity-loaded": f"[VLibras] Player WebGL Unity carregado. Configurando avatar '{avatar}'...",
+                        "animation-started": f"[VLibras] Iniciando reprodução dos sinais ({avatar})...",
+                        "animation-complete": f"\n[VLibras] Sinalização concluída com sucesso! Gravando vídeo...",
+                    }
+                    if stage in stage_map:
+                        msg = stage_map[stage]
+                        if is_tty:
+                            sys.stderr.write(f"\r\033[K{msg}" if not msg.startswith("\n") else msg)
+                            sys.stderr.flush()
+                        else:
+                            print(msg.strip(), file=sys.stderr)
+                elif line.startswith("progress "):
+                    parts = dict(re.findall(r"(\w+)=(\d+)", line))
+                    if "current" in parts and "total" in parts:
+                        cur, tot = int(parts["current"]), int(parts["total"])
+                        if is_tty:
+                            sys.stderr.write(_format_vlibras_progress(cur, tot, avatar))
+                            sys.stderr.flush()
+                        elif cur % 20 == 0 or cur == tot:
+                            print(
+                                f"[VLibras] {avatar.capitalize()}: {cur}/{tot} sinais ({(cur/tot)*100:.0f}%)",
+                                file=sys.stderr,
+                            )
+
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 [self.node_executable, str(helper)],
-                input=json.dumps(payload, ensure_ascii=False),
-                capture_output=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=self.timeout_seconds + 30,
-                check=False,
                 cwd=self.root,
             )
+            assert process.stdin is not None
+            process.stdin.write(json.dumps(payload, ensure_ascii=False))
+            process.stdin.close()
+
+            stderr_thread = threading.Thread(target=stream_stderr, args=(process,), daemon=True)
+            stderr_thread.start()
+
+            stdout_data, _ = process.communicate(timeout=self.timeout_seconds + 30)
+            stderr_thread.join(timeout=2)
         except subprocess.TimeoutExpired as error:
+            if process is not None:
+                process.kill()
             raise LibrasRenderError(
                 f"player VLibras excedeu {self.timeout_seconds:g}s para sinalizar"
             ) from error
         except OSError as error:
+            if process is not None:
+                process.kill()
             raise LibrasRenderError(f"não foi possível iniciar o player VLibras: {error}") from error
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
 
-        if result.returncode != 0:
-            error_lines = result.stderr.strip().splitlines()
-            detail = " | ".join(error_lines[-20:]) if error_lines else "sem detalhes"
+        if process.returncode != 0:
+            detail = " | ".join(stderr_lines[-20:]) if stderr_lines else "sem detalhes"
             raise LibrasRenderError(f"captura do player VLibras falhou: {detail}")
         try:
-            response = json.loads(result.stdout.strip().splitlines()[-1])
+            response = json.loads(stdout_data.strip().splitlines()[-1])
             capture = VlibrasCaptureResult(
                 recording=Path(response["recording"]),
                 trim_offset_seconds=float(response["trimOffsetSeconds"]),
