@@ -179,7 +179,7 @@ class CliTests(unittest.TestCase):
             status = main(["render", "test.libras-ir.json", "--duration", "5.0"])
 
         self.assertEqual(status, 0)
-        self.assertIn("Libras avatar rendered", output.getvalue())
+        self.assertIn("Technical avatar preview rendered", output.getvalue())
 
     @patch("sinal.cli.main.run_pipeline")
     def test_process_render_full_pipeline(self, mock_pipeline) -> None:

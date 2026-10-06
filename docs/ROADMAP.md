@@ -41,13 +41,19 @@ vídeo, áudio e legenda textual.
 - verificação de implantação local completa e licença dos componentes;
 - fallback e isolamento via LIBRAS-IR mantidos.
 
-## Fases 5 e 6 — Render e composição (implementados)
+## Fases 5 e 6 — Render e composição (parcial)
 
-- contrato `LibrasRenderer` e renderizador sintético animado via FFmpeg (`SyntheticPlaceholderRenderer`);
-- geração do vídeo do avatar sincronizado (`sinal render`);
+- contrato `LibrasRenderer`, preview sintético e preview procedural;
+- auditoria fail-closed de revisão, proveniência e cobertura de movimentos;
 - compositor FFmpeg com suporte aos 4 cantos (`sinal compose`);
-- orquestrador completo ponta a ponta (`sinal process --render`);
 - preservação de canais de áudio e legendas.
+
+Pendente para produção:
+
+- integrar um corpus/catálogo de movimentos revisado por especialistas em Libras;
+- obter e integrar uma malha SINA rigada que corresponda ao conceito visual;
+- validar o resultado com pessoas surdas e especialistas;
+- somente então habilitar `sinal process --render` como fluxo publicável.
 
 ## Depois do MVP
 

@@ -32,6 +32,7 @@ from sinal.media.subtitles import (
 )
 from sinal.pipeline import run_pipeline
 from sinal.render import LibrasRenderError, render_libras
+from sinal.render.readiness import audit_render_readiness
 from sinal.transcription import TranscriptionError, transcribe_media
 
 
@@ -97,13 +98,18 @@ def _parser() -> argparse.ArgumentParser:
     process_parser.add_argument(
         "--render",
         action="store_true",
-        help="renderiza o avatar de Libras e compõe o vídeo final automaticamente",
+        help="solicita avatar e composição; falha sem backend/catálogo validados",
     )
     process_parser.add_argument(
         "--engine",
         choices=("rules", "rule-based", "mock", "vlibras"),
-        default="rules",
+        default="mock",
         help="motor de tradução LIBRAS-IR (padrão: %(default)s)",
+    )
+    process_parser.add_argument(
+        "--motion-catalog",
+        type=Path,
+        help="catálogo JSON de movimentos de Libras revisado por especialista",
     )
     process_parser.add_argument(
         "--endpoint",
@@ -145,8 +151,8 @@ def _parser() -> argparse.ArgumentParser:
     ir_parser.add_argument(
         "--engine",
         choices=("rules", "rule-based", "mock", "vlibras"),
-        default="rules",
-        help="motor de tradução: rules (glosas locais), mock (lacunas) ou vlibras (padrão: %(default)s)",
+        default="mock",
+        help="motor de tradução: rules (protótipo lexical), mock (lacunas) ou vlibras (padrão: %(default)s)",
     )
     ir_parser.add_argument(
         "--endpoint",
@@ -168,7 +174,7 @@ def _parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
 
     render_parser = commands.add_parser(
-        "render", help="renderiza um vídeo de avatar de Libras a partir do LIBRAS-IR"
+        "render", help="gera preview procedural; a saída não é Libras publicável"
     )
     render_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
     render_parser.add_argument(
@@ -184,8 +190,30 @@ def _parser() -> argparse.ArgumentParser:
         "--fps", type=int, default=30, help="taxa de quadros por segundo (padrão: %(default)s)"
     )
     render_parser.add_argument(
+        "--motion-catalog",
+        type=Path,
+        help="catálogo JSON de movimentos de Libras revisado por especialista",
+    )
+    render_parser.add_argument(
+        "--allow-unreviewed-preview",
+        action="store_true",
+        help="gera somente uma prévia técnica com aviso visível; não é Libras publicável",
+    )
+    render_parser.add_argument(
         "--overwrite", action="store_true", help="substitui o arquivo de saída"
     )
+
+    audit_parser = commands.add_parser(
+        "audit-render",
+        help="verifica revisão e cobertura de movimentos antes de renderizar",
+    )
+    audit_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
+    audit_parser.add_argument(
+        "--motion-catalog",
+        type=Path,
+        help="catálogo JSON de movimentos a auditar; sem ele, audita os protótipos internos",
+    )
+    audit_parser.add_argument("--json", action="store_true", help="emite o relatório como JSON")
 
     compose_parser = commands.add_parser(
         "compose", help="sobrepõe um vídeo de avatar já sincronizado à mídia"
@@ -344,6 +372,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                     render=True,
                     position=args.position,
                     scale=args.scale,
+                    motion_catalog=args.motion_catalog,
                     overwrite=args.overwrite,
                 )
                 print(f"Media prepared: {result.prepared_media}")
@@ -391,7 +420,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
             if args.engine == "mock":
                 print("Translation pending: mock recorded gaps and generated no signs.")
             elif args.engine in ("rules", "rule-based"):
-                print("Libras glosses generated via linguistic rules.")
+                print(
+                    "Experimental lexical pre-glosses generated; this is not a "
+                    "reviewed Libras translation and production rendering will be blocked."
+                )
             else:
                 print("Machine translation generated; human Libras review is required.")
             return 0
@@ -403,6 +435,34 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 f"{len(document['utterances'])} utterance(s)"
             )
             return 0
+
+        if args.command == "audit-render":
+            from sinal.animation.motion import MotionLibrary
+
+            document = load_ir(args.document)
+            library = (
+                MotionLibrary.from_catalog(args.motion_catalog)
+                if args.motion_catalog is not None
+                else MotionLibrary()
+            )
+            report = audit_render_readiness(document, library)
+            if args.json:
+                print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
+            else:
+                state = "PRONTO" if report.ready else "BLOQUEADO"
+                print(
+                    f"Render: {state} — {report.covered_signs}/{report.total_signs} "
+                    "sinais cobertos por movimentos revisados"
+                )
+                for issue in report.issues:
+                    location = ""
+                    if issue.utterance_index is not None:
+                        location = f" [enunciado {issue.utterance_index + 1}"
+                        if issue.sign_index is not None:
+                            location += f", sinal {issue.sign_index + 1}"
+                        location += "]"
+                    print(f"- {issue.code}{location}: {issue.message}")
+            return 0 if report.ready else 1
 
         if args.command == "render":
             logger.debug("rendering %s", args.document)
@@ -418,8 +478,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 duration=duration,
                 fps=args.fps,
                 overwrite=args.overwrite,
+                motion_catalog=args.motion_catalog,
+                allow_unreviewed_preview=args.allow_unreviewed_preview,
             )
-            print(f"Libras avatar rendered: {destination}")
+            print(f"Technical avatar preview rendered (NOT validated Libras): {destination}")
             return 0
 
         if args.command == "compose":

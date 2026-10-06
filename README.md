@@ -8,10 +8,10 @@ de conteúdo, transcrição, tradução, LIBRAS-IR, movimento, renderização e
 composição. Ele não trata Libras como substituição palavra por palavra do
 português.
 
-> Estado atual: pipeline de acessibilidade de ponta a ponta implementado.
-> Suporta inspeção, extração e transcrição de legendas (Whisper/mock), geração e
-> validação de LIBRAS-IR (mock/VLibras), renderização de avatar/janela de Libras e
-> composição audiovisual com preservação de áudio e legendas.
+> Estado atual: o pipeline de mídia e o contrato LIBRAS-IR estão implementados.
+> A renderização procedural é somente uma pré-visualização técnica. A saída de
+> produção fica bloqueada até receber tradução humana revisada e um catálogo com
+> cobertura integral de movimentos de Libras também revisados.
 
 ## O que já funciona
 
@@ -24,9 +24,10 @@ português.
 - geração e validação estrita do LIBRAS-IR 0.1.0;
 - mock honesto, que registra tradução pendente sem inventar sinais;
 - adapter opcional para o endpoint de tradução de uma instância VLibras API;
-- renderizador sintético de janela de Libras (`sinal render`), gerando `avatar.mp4` animado e sincronizado com a linha do tempo;
+- auditoria fail-closed de tradução, lacunas, proveniência e cobertura de movimentos;
+- pré-visualizador procedural sincronizado, sempre marcado visualmente como não validado;
 - compositor FFmpeg (`sinal compose`), sobrepondo o avatar nos quatro cantos (`bottom-right`, `bottom-left`, `top-right`, `top-left`) com preservação de faixas;
-- orquestrador completo de ponta a ponta (`sinal process --render`);
+- orquestrador fail-closed, que interrompe `sinal process --render` enquanto não houver backend validado;
 - detecção dinâmica de encoders H.264/compatíveis no FFmpeg (suporte multiplataforma para Fedora, Ubuntu, Arch, etc.);
 - saída humana ou JSON no comando de inspeção;
 - erros explícitos e sem dependências ocultas.
@@ -82,7 +83,7 @@ sinal transcribe video.mp4 -o video.srt --engine mock
 
 ### 3. Gerar e validar o LIBRAS-IR
 ```bash
-# Modo mock honesto (registra lacunas e estrutura temporal sem falsas glosas)
+# Modo padrão e seguro: registra lacunas sem inventar glosas
 sinal build-ir video.srt --engine mock --output video.libras-ir.json
 
 # Ou usando uma instância VLibras local configurada
@@ -92,17 +93,37 @@ sinal build-ir video.srt --engine vlibras --endpoint http://127.0.0.1:3000 --all
 sinal validate-ir video.libras-ir.json
 ```
 
-### 4. Renderizar o avatar de Libras
+### 4. Auditar e renderizar
+
+Um documento só fica linguisticamente pronto quando `review.status` indica
+revisão humana e todos os IDs possuem movimento revisado no catálogo. Veja
+[Catálogo de movimentos](docs/MOTION_CATALOG.md).
+
 ```bash
-sinal render video.libras-ir.json --media video.mp4 -o avatar.mp4
+sinal audit-render video.libras-ir.json --motion-catalog motions.reviewed.json
 ```
+
+O renderer procedural ainda não possui a malha SINA rigada nem articulação
+suficiente para produção e, por isso, jamais gera saída publicável. Para depurar
+timeline e enquadramento com um aviso visível:
+
+```bash
+sinal render video.libras-ir.json --allow-unreviewed-preview -o preview.mp4
+```
+
+Até a integração de um backend validado, gere o vídeo de Libras no backend
+oficial/revisado e use `sinal compose` para a composição final.
 
 ### 5. Compor o vídeo final
 ```bash
 sinal compose video.mp4 --avatar avatar.mp4 --position bottom-right -o video-final.mp4
 ```
 
-### 6. Executar o pipeline completo em um único comando
+### 6. Executar o pipeline validado em um único comando
+
+Este comando permanece fail-closed: no estado atual ele prepara mídia e IR,
+mas recusa a etapa de avatar em vez de gerar gestos falsos.
+
 ```bash
 sinal process video.mp4 --srt video.srt --render --position bottom-right -o video-final.mp4
 ```
@@ -149,8 +170,12 @@ espalhada pelo sistema. Veja [Arquitetura](docs/ARCHITECTURE.md),
 - arquivos com múltiplas legendas exigem `--stream` quando a seleção padrão não
   for a desejada;
 - a configuração TOML é um contrato inicial e ainda não é carregada pelo CLI;
-- o adapter VLibras traduz texto em glosa, mas a geração/renderização pública de
-  vídeo do avatar ainda não está integrada;
+- o adapter HTTP atual cobre somente tradução textual; o player/avatar oficial
+  do VLibras ainda não está integrado;
+- a imagem-conceito da SINA não é uma malha 3D rigada. O renderizador procedural
+  atual não reproduz aquela identidade visual e, por isso, é apenas preview;
+- os movimentos internos são protótipos não revisados e nunca passam na auditoria
+  de produção;
 - tradução automática não garante equivalência com interpretação humana.
 
 ## Ética e revisão

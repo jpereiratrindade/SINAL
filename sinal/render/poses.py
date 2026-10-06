@@ -36,10 +36,9 @@ class BodyPose3D:
     eyebrow_raise: float = 0.0
     mouth_open: float = 0.0
 
-    def lerp(self, other: BodyPose3D, t: float) -> BodyPose3D:
-        """Interpolação linear suave entre duas poses anatômicas."""
-        # Suavização cúbica (Ease In Out)
-        st = t * t * (3.0 - 2.0 * t)
+    def lerp(self, other: BodyPose3D, t: float, *, smooth: bool = True) -> BodyPose3D:
+        """Interpola entre duas poses, com suavização cúbica opcional."""
+        st = t * t * (3.0 - 2.0 * t) if smooth else t
 
         return BodyPose3D(
             left_elbow=self.left_elbow.lerp(other.left_elbow, st),

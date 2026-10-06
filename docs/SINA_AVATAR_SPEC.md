@@ -1,10 +1,15 @@
-# SINA — Especificação do Avatar Oficial de Libras (SINAL)
+# SINA — Conceito visual e requisitos futuros do avatar (SINAL)
 
-![SINA - Conceito Visual do Avatar Oficial](/var/home/jpereiratrindade/.gemini/antigravity-ide/brain/f79132eb-ff3e-409a-b04f-6a1125e7625e/sina_avatar_concept_1791313710429.jpg)
+> A imagem de referência usada no design não é um asset 3D rigado e não está
+> incluída no repositório. O renderer atual é procedural e não reproduz sua
+> aparência. Esta página especifica o alvo; não descreve algo já implementado.
 
 ## 1. Identidade e Filosofia Visual
 
-A **SINA** é a primeira intérprete digital canônica do ecossistema **SINAL**. Seu design foi concebido para transmitir clareza, empatia, seriedade e naturalidade, posicionando-se estritamente no território do **semi-realismo humanizado** (apresentadora virtual 3D), evitando tanto a estética de mascote infantil quanto o estranhamento (*uncanny valley*) do hiper-realismo.
+A **SINA** é a proposta de identidade visual do ecossistema **SINAL**. Seu
+design deverá transmitir clareza, empatia, seriedade e naturalidade no território
+do **semi-realismo humanizado**. Ela só poderá ser chamada de intérprete digital
+depois de existir um rig adequado e movimentos de Libras revisados.
 
 ### Diretrizes de Design
 - **Faixa etária aparente:** ~28 a 35 anos.
@@ -51,7 +56,8 @@ graph TD
 - Amplitude de abertura lateral (*abdução/adução*) e flexão precisa para reproduzir com fidelidade as configurações manuais do alfabeto datilológico e das glosas do inventário.
 
 ### 2.2. Marcadores Não-Manuais (MNM)
-O modelo facial implementa suporte a **Blendshapes / Morph Targets** compatíveis com o padrão *ARKit / FACS (Facial Action Coding System)*:
+O modelo facial de produção deverá suportar **Blendshapes / Morph Targets**
+compatíveis com *ARKit / FACS (Facial Action Coding System)*:
 1. `browDownLeft` / `browDownRight` / `browInnerUp`: Indispensáveis para perguntas em Libras (WH-questions vs. Yes/No questions).
 2. `eyeBlinkLeft` / `eyeBlinkRight` / `eyeWide`: Ênfase e pontuação visual.
 3. `mouthSmile` / `mouthPucker` / `jawOpen` / `cheekPuff`: Morfologia e intensidade de ações/adjetivos em Libras.

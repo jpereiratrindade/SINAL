@@ -24,10 +24,10 @@ def _escape_drawtext(text: str) -> str:
 
 
 class SyntheticPlaceholderRenderer(LibrasRenderer):
-    """Gera um vídeo de acessibilidade em Libras sincronizado a partir do LIBRAS-IR.
+    """Gera um diagnóstico visual sincronizado, não uma interpretação em Libras.
 
-    Renderiza uma janela com alto contraste, moldura ABNT, avatar representativo
-    animado nas janelas de sinalização e legendas técnicas da glosa/sinal ativo.
+    Este placeholder existe para testar timeline e FFmpeg. Seus movimentos são
+    geométricos e não podem ser publicados ou rotulados como sinais de Libras.
     """
 
     def __init__(self, *, default_width: int = 640, default_height: int = 1080) -> None:
@@ -93,7 +93,7 @@ class SyntheticPlaceholderRenderer(LibrasRenderer):
             f"drawbox=x=16:y=16:w={w - 32}:h=56:color=0x24283b@0.9:t=fill"
         )
         filters.append(
-            f"drawtext=text='ACESSIBILIDADE LIBRAS':fontsize=22:fontcolor=0x7aa2f7:"
+            f"drawtext=text='PROTOTIPO - NAO E LIBRAS':fontsize=22:fontcolor=0xf7768e:"
             f"x=(w-text_w)/2:y=34"
         )
 
@@ -146,9 +146,9 @@ class SyntheticPlaceholderRenderer(LibrasRenderer):
                     s_end = min(s_start + s_dur, u_end)
                     s_between = f"between(t,{s_start:.3f},{s_end:.3f})"
 
-                    # Exibição do sinal ativo
+                    # Exibição da glosa temporal; não afirma que há sinal real.
                     filters.append(
-                        f"drawtext=text='SINAL\\: {sign_id}':fontsize=24:fontcolor=0x73daca:"
+                        f"drawtext=text='GLOSA SEM MOVIMENTO\\: {sign_id}':fontsize=20:fontcolor=0xe0af68:"
                         f"x=(w-text_w)/2:y={footer_y + 24}:enable='{s_between}'"
                     )
 

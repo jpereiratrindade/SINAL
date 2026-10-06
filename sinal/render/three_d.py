@@ -15,7 +15,8 @@ from sinal.libras.ir import validate_ir
 from sinal.media.ffmpeg import detect_video_encoder
 from sinal.render.base import LibrasRenderError, LibrasRenderer
 from sinal.render.math3d import Camera3D, Vec3
-from sinal.render.poses import POSE_REST, BodyPose3D, get_sign_pose
+from sinal.render.poses import POSE_REST, BodyPose3D
+from sinal.render.readiness import require_render_ready
 
 
 class Color(tuple):
@@ -233,6 +234,11 @@ from sinal.animation.motion import CoarticulationTimeline, SignTimelineItem, Mot
 _GLOBAL_MOTION_LIB = MotionLibrary()
 
 
+def _init_renderer_worker(motion_library: MotionLibrary) -> None:
+    global _GLOBAL_MOTION_LIB
+    _GLOBAL_MOTION_LIB = motion_library
+
+
 def _render_frame_task(task_args: tuple) -> tuple[int, bytes]:
     frame_idx, w, h, fps, timeline_raw = task_args
     current_time = frame_idx / fps
@@ -249,11 +255,20 @@ def _render_frame_task(task_args: tuple) -> tuple[int, bytes]:
 
 
 class ThreeDLibrasRenderer(LibrasRenderer):
-    """Renderizador 3D com esqueleto articulado, dedos individuais, iluminação e multi-core."""
+    """Pré-visualizador procedural; não é um avatar de Libras homologado."""
 
-    def __init__(self, *, default_width: int = 640, default_height: int = 1080) -> None:
+    def __init__(
+        self,
+        *,
+        default_width: int = 640,
+        default_height: int = 1080,
+        motion_library: MotionLibrary | None = None,
+        allow_unreviewed_preview: bool = False,
+    ) -> None:
         self.default_width = default_width
         self.default_height = default_height
+        self.motion_library = motion_library or MotionLibrary()
+        self.allow_unreviewed_preview = allow_unreviewed_preview
 
     def _render_frame(self, w: int, h: int, pose: BodyPose3D, active_sign: tuple[str, str, float] | None) -> bytes:
         return _render_frame_standalone(w, h, pose, active_sign)
@@ -271,6 +286,15 @@ class ThreeDLibrasRenderer(LibrasRenderer):
         workers: int | None = None,
     ) -> Path:
         validate_ir(document)
+
+        if not self.allow_unreviewed_preview:
+            require_render_ready(document, self.motion_library)
+            raise LibrasRenderError(
+                "renderização bloqueada: o renderer procedural não é um avatar "
+                "de produção rigado/homologado. Use um backend de Libras validado "
+                "e depois `sinal compose`; para depuração visual, use "
+                "--allow-unreviewed-preview."
+            )
 
         w = width or self.default_width
         h = height or self.default_height
@@ -305,8 +329,10 @@ class ThreeDLibrasRenderer(LibrasRenderer):
 
         # Constrói os filtros de texto nítido (título, sinal ativo e legendas)
         footer_y = h - 130 - 4
+        title = "PROTOTIPO - NAO PUBLICAR COMO LIBRAS"
+        title_color = "0xf7768e"
         text_filters: list[str] = [
-            f"drawtext=text='ACESSIBILIDADE LIBRAS':fontsize=22:fontcolor=0x7aa2f7:x=(w-text_w)/2:y=16"
+            f"drawtext=text='{title}':fontsize=22:fontcolor={title_color}:x=(w-text_w)/2:y=16"
         ]
 
         for u in utterances:
@@ -327,8 +353,9 @@ class ThreeDLibrasRenderer(LibrasRenderer):
                 s_end = min(s_start + s_dur, u_end)
                 s_between = f"between(t,{s_start:.3f},{s_end:.3f})"
 
+                sign_label = "GLOSA EM PREVIEW"
                 text_filters.append(
-                    f"drawtext=text='SINAL\\: {sign_id}':fontsize=24:fontcolor=0x73daca:x=(w-text_w)/2:y={footer_y + 24}:enable='{s_between}'"
+                    f"drawtext=text='{sign_label}\\: {sign_id}':fontsize=24:fontcolor=0x73daca:x=(w-text_w)/2:y={footer_y + 24}:enable='{s_between}'"
                 )
 
         import tempfile
@@ -398,7 +425,11 @@ class ThreeDLibrasRenderer(LibrasRenderer):
 
         try:
             # Processamento paralelo com todos os núcleos CPU
-            with Pool(processes=num_workers) as pool:
+            with Pool(
+                processes=num_workers,
+                initializer=_init_renderer_worker,
+                initargs=(self.motion_library,),
+            ) as pool:
                 # Buffer para garantir que os frames entrem no FFmpeg em ordem exata
                 frame_buffer: dict[int, bytes] = {}
                 next_write_idx = 0

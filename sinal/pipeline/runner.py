@@ -42,6 +42,7 @@ def run_pipeline(
     position: str = "bottom-right",
     scale: float = 0.28,
     margin: int = 24,
+    motion_catalog: str | Path | None = None,
     overwrite: bool = False,
 ) -> PipelineResult:
     """Executa o pipeline completo: preparação, legendas, LIBRAS-IR, render e composição."""
@@ -115,6 +116,7 @@ def run_pipeline(
             avatar_file,
             duration=duration,
             overwrite=overwrite,
+            motion_catalog=motion_catalog,
         )
 
         final_dest = (

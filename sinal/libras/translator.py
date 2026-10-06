@@ -37,7 +37,7 @@ class MockLibrasTranslator:
 
 @dataclass(frozen=True, slots=True)
 class RuleBasedLibrasTranslator:
-    """Traduz português para glosas estruturadas de Libras por meio de regras linguísticas."""
+    """Gera pré-glosas lexicais experimentais; não equivale a tradução em Libras."""
 
     def translate(self, cues: list[SubtitleCue]) -> dict[str, object]:
         glosses = [pt_to_libras_gloss(cue.text) for cue in cues]

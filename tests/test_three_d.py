@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,8 @@ from sinal.media.subtitles import SubtitleCue
 from sinal.render.math3d import Camera3D, Vec3
 from sinal.render.poses import get_sign_pose
 from sinal.render.three_d import ThreeDLibrasRenderer
+from sinal.render.base import LibrasRenderError
+from sinal.animation.motion import MotionLibrary, MotionProvenance
 
 
 class ThreeDTests(unittest.TestCase):
@@ -44,12 +47,56 @@ class ThreeDTests(unittest.TestCase):
         cues = [SubtitleCue(1, 0.0, 1.0, "Olá")]
         doc = build_ir(cues, ["OLA"], translator="test", automatic=True)
 
-        renderer = ThreeDLibrasRenderer(default_width=160, default_height=240)
+        renderer = ThreeDLibrasRenderer(
+            default_width=160,
+            default_height=240,
+            allow_unreviewed_preview=True,
+        )
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_file = Path(tmp_dir) / "avatar_3d.mp4"
             dest = renderer.render(doc, out_file, duration=0.1, fps=10)
             self.assertEqual(dest, out_file)
             self.assertTrue(proc.stdin.write.called)
+
+    @patch("sinal.render.three_d.subprocess.Popen")
+    def test_three_d_renderer_blocks_unreviewed_motion_before_ffmpeg(self, mock_popen) -> None:
+        cues = [SubtitleCue(1, 0.0, 1.0, "Olá")]
+        doc = build_ir(cues, ["OLA"], translator="test", automatic=True)
+
+        with self.assertRaisesRegex(LibrasRenderError, "renderização bloqueada"):
+            ThreeDLibrasRenderer().render(doc, duration=0.1, fps=10)
+
+        mock_popen.assert_not_called()
+
+    @patch("sinal.render.three_d.subprocess.Popen")
+    def test_three_d_renderer_remains_preview_even_with_reviewed_motion(self, mock_popen) -> None:
+        doc = build_ir(
+            [SubtitleCue(1, 0.0, 1.0, "Olá")],
+            ["OLA"],
+            translator="reviewed-test",
+            automatic=False,
+        )
+        doc["review"]["status"] = "approved"
+        library = MotionLibrary()
+        prototype = library.get("OLA")
+        assert prototype is not None
+        library.register(
+            replace(
+                prototype,
+                provenance=MotionProvenance(
+                    source="test corpus",
+                    source_version="1",
+                    review_status="approved",
+                    reviewer="Libras specialist",
+                    reviewed_at="2026-10-06",
+                ),
+            )
+        )
+
+        with self.assertRaisesRegex(LibrasRenderError, "renderer procedural"):
+            ThreeDLibrasRenderer(motion_library=library).render(doc, duration=0.1)
+
+        mock_popen.assert_not_called()
 
 
 

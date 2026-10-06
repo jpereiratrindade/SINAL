@@ -2,12 +2,128 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from datetime import date
+import json
 import math
+from pathlib import Path
 from typing import Any, Sequence
 
 from sinal.render.math3d import Vec3
 from sinal.render.poses import BodyPose3D, HandPose, POSE_REST
+
+
+MOTION_CATALOG_SCHEMA = "sinal.motion-catalog"
+MOTION_CATALOG_VERSION = "1.0.0"
+REVIEWED_MOTION_STATUSES = frozenset({"human-reviewed", "human-corrected", "approved"})
+
+
+class MotionCatalogError(ValueError):
+    """Catálogo de movimentos ausente, inválido ou sem proveniência."""
+
+
+@dataclass(frozen=True)
+class MotionProvenance:
+    """Proveniência linguística de um movimento.
+
+    ``unverified-prototype`` existe somente para poses de desenvolvimento. Um
+    movimento assim nunca é aceito pela renderização de produção.
+    """
+
+    source: str
+    source_version: str
+    review_status: str
+    reviewer: str | None = None
+    reviewed_at: str | None = None
+    source_url: str | None = None
+    language: str = "libras-BR"
+
+    @property
+    def is_reviewed(self) -> bool:
+        try:
+            reviewed_date_is_valid = bool(self.reviewed_at) and bool(
+                date.fromisoformat(self.reviewed_at or "")
+            )
+        except ValueError:
+            reviewed_date_is_valid = False
+        return (
+            self.language == "libras-BR"
+            and self.review_status in REVIEWED_MOTION_STATUSES
+            and bool(self.reviewer and self.reviewer.strip())
+            and reviewed_date_is_valid
+        )
+
+
+PROTOTYPE_PROVENANCE = MotionProvenance(
+    source="SINAL procedural prototype",
+    source_version="0.1.0",
+    review_status="unverified-prototype",
+)
+
+
+def _required_text(container: dict[str, Any], key: str, field_name: str) -> str:
+    value = container.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise MotionCatalogError(f"{field_name} é obrigatório")
+    return value.strip()
+
+
+def _optional_text(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise MotionCatalogError(f"{field_name} deve ser texto não vazio")
+    return value.strip()
+
+
+def _finite_float(value: object, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise MotionCatalogError(f"{field_name} deve ser numérico")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise MotionCatalogError(f"{field_name} deve ser finito")
+    return parsed
+
+
+def _unit_float(value: object, field_name: str) -> float:
+    parsed = _finite_float(value, field_name)
+    if not 0.0 <= parsed <= 1.0:
+        raise MotionCatalogError(f"{field_name} deve estar entre 0 e 1")
+    return parsed
+
+
+def _parse_vec(value: object, field_name: str) -> Vec3:
+    if not isinstance(value, list) or len(value) != 3:
+        raise MotionCatalogError(f"{field_name} deve ser [x, y, z]")
+    return Vec3(*(_finite_float(component, f"{field_name}[{i}]") for i, component in enumerate(value)))
+
+
+def _parse_hand(value: object, field_name: str) -> HandPose:
+    if value is None:
+        return HandPose()
+    if not isinstance(value, dict):
+        raise MotionCatalogError(f"{field_name} deve ser um objeto")
+    names = ("thumb", "index", "middle", "ring", "pinky")
+    return HandPose(*(_unit_float(value.get(name, 0.0), f"{field_name}.{name}") for name in names))
+
+
+def _parse_pose(value: object, field_name: str) -> BodyPose3D:
+    if not isinstance(value, dict):
+        raise MotionCatalogError(f"{field_name} deve ser um objeto")
+    return BodyPose3D(
+        left_elbow=_parse_vec(value.get("left_elbow"), f"{field_name}.left_elbow"),
+        left_wrist=_parse_vec(value.get("left_wrist"), f"{field_name}.left_wrist"),
+        right_elbow=_parse_vec(value.get("right_elbow"), f"{field_name}.right_elbow"),
+        right_wrist=_parse_vec(value.get("right_wrist"), f"{field_name}.right_wrist"),
+        left_hand=_parse_hand(value.get("left_hand"), f"{field_name}.left_hand"),
+        right_hand=_parse_hand(value.get("right_hand"), f"{field_name}.right_hand"),
+        head_rotation=_parse_vec(
+            value.get("head_rotation", [0.0, 0.0, 0.0]),
+            f"{field_name}.head_rotation",
+        ),
+        eyebrow_raise=_unit_float(value.get("eyebrow_raise", 0.0), f"{field_name}.eyebrow_raise"),
+        mouth_open=_unit_float(value.get("mouth_open", 0.0), f"{field_name}.mouth_open"),
+    )
 
 
 @dataclass(frozen=True)
@@ -26,6 +142,7 @@ class SignMotion:
     keyframes: list[Keyframe]
     is_two_handed: bool = False
     dominant_hand: str = "right"  # "right", "left", "both"
+    provenance: MotionProvenance = PROTOTYPE_PROVENANCE
 
     def sample(self, progress: float) -> BodyPose3D:
         """Amostra a pose interpolada para uma posição temporal [0.0, 1.0]."""
@@ -47,7 +164,9 @@ class SignMotion:
             if k0.time <= progress <= k1.time:
                 seg_duration = max(1e-5, k1.time - k0.time)
                 t = (progress - k0.time) / seg_duration
-                return k0.pose.lerp(k1.pose, t)
+                if k0.ease == "hold":
+                    return k0.pose
+                return k0.pose.lerp(k1.pose, t, smooth=k0.ease == "cubic")
 
         return self.keyframes[-1].pose
 
@@ -69,9 +188,10 @@ POSE_NEUTRAL_SIGNING_SPACE = BodyPose3D(
 class MotionLibrary:
     """Catálogo estruturado de clipes de movimento (SignMotion) de Libras."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, include_prototypes: bool = True) -> None:
         self._motions: dict[str, SignMotion] = {}
-        self._register_canonical_motions()
+        if include_prototypes:
+            self._register_prototype_motions()
 
     def register(self, motion: SignMotion) -> None:
         self._motions[motion.id.upper()] = motion
@@ -82,6 +202,103 @@ class MotionLibrary:
     def has_motion(self, sign_id: str) -> bool:
         return sign_id.upper().strip() in self._motions
 
+    def has_reviewed_motion(self, sign_id: str) -> bool:
+        motion = self.get(sign_id)
+        return motion is not None and motion.provenance.is_reviewed
+
+    @property
+    def sign_ids(self) -> frozenset[str]:
+        return frozenset(self._motions)
+
+    @classmethod
+    def from_catalog(cls, path: str | Path) -> MotionLibrary:
+        """Carrega keyframes de um catálogo versionado e rastreável."""
+        source_path = Path(path)
+        if not source_path.is_file():
+            raise MotionCatalogError(f"catálogo de movimentos não encontrado: {source_path}")
+        try:
+            payload = json.loads(source_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise MotionCatalogError(f"catálogo de movimentos inválido: {error}") from error
+
+        if not isinstance(payload, dict):
+            raise MotionCatalogError("catálogo de movimentos deve ser um objeto JSON")
+        if payload.get("schema") != MOTION_CATALOG_SCHEMA:
+            raise MotionCatalogError(f"schema deve ser {MOTION_CATALOG_SCHEMA!r}")
+        if payload.get("version") != MOTION_CATALOG_VERSION:
+            raise MotionCatalogError(
+                f"versão de catálogo incompatível: {payload.get('version')!r}"
+            )
+        if payload.get("language") != "libras-BR":
+            raise MotionCatalogError("language deve ser 'libras-BR'")
+
+        source = payload.get("source")
+        review = payload.get("review")
+        if not isinstance(source, dict) or not isinstance(review, dict):
+            raise MotionCatalogError("source e review são obrigatórios")
+        provenance = MotionProvenance(
+            source=_required_text(source, "name", "source.name"),
+            source_version=_required_text(source, "version", "source.version"),
+            source_url=_optional_text(source.get("url"), "source.url"),
+            review_status=_required_text(review, "status", "review.status"),
+            reviewer=_optional_text(review.get("reviewer"), "review.reviewer"),
+            reviewed_at=_optional_text(review.get("reviewed_at"), "review.reviewed_at"),
+        )
+
+        raw_motions = payload.get("motions")
+        if not isinstance(raw_motions, list) or not raw_motions:
+            raise MotionCatalogError("motions deve ser uma lista não vazia")
+
+        library = cls(include_prototypes=False)
+        for index, raw_motion in enumerate(raw_motions):
+            prefix = f"motions[{index}]"
+            if not isinstance(raw_motion, dict):
+                raise MotionCatalogError(f"{prefix} deve ser um objeto")
+            raw_keyframes = raw_motion.get("keyframes")
+            if not isinstance(raw_keyframes, list) or not raw_keyframes:
+                raise MotionCatalogError(f"{prefix}.keyframes deve ser uma lista não vazia")
+            keyframes: list[Keyframe] = []
+            previous_time = -1.0
+            for frame_index, raw_frame in enumerate(raw_keyframes):
+                frame_prefix = f"{prefix}.keyframes[{frame_index}]"
+                if not isinstance(raw_frame, dict):
+                    raise MotionCatalogError(f"{frame_prefix} deve ser um objeto")
+                time_value = _unit_float(raw_frame.get("time"), f"{frame_prefix}.time")
+                if time_value <= previous_time:
+                    raise MotionCatalogError(f"{frame_prefix}.time deve ser estritamente crescente")
+                previous_time = time_value
+                ease = str(raw_frame.get("ease", "cubic"))
+                if ease not in {"linear", "cubic", "hold"}:
+                    raise MotionCatalogError(f"{frame_prefix}.ease é inválido")
+                keyframes.append(
+                    Keyframe(
+                        time=time_value,
+                        pose=_parse_pose(raw_frame.get("pose"), f"{frame_prefix}.pose"),
+                        ease=ease,
+                    )
+                )
+            if keyframes[0].time != 0.0 or keyframes[-1].time != 1.0:
+                raise MotionCatalogError(f"{prefix}.keyframes deve cobrir exatamente 0.0 a 1.0")
+
+            dominant_hand = str(raw_motion.get("dominant_hand", "right"))
+            if dominant_hand not in {"right", "left", "both"}:
+                raise MotionCatalogError(f"{prefix}.dominant_hand é inválido")
+            is_two_handed = raw_motion.get("is_two_handed", False)
+            if not isinstance(is_two_handed, bool):
+                raise MotionCatalogError(f"{prefix}.is_two_handed deve ser booleano")
+            motion = SignMotion(
+                id=_required_text(raw_motion, "id", f"{prefix}.id").upper(),
+                description=_required_text(raw_motion, "description", f"{prefix}.description"),
+                keyframes=keyframes,
+                is_two_handed=is_two_handed,
+                dominant_hand=dominant_hand,
+                provenance=provenance,
+            )
+            if motion.id in library._motions:
+                raise MotionCatalogError(f"movimento duplicado: {motion.id}")
+            library.register(motion)
+        return library
+
     def sample_or_neutral(self, sign_id: str, progress: float) -> tuple[BodyPose3D, bool]:
         """Amostra o movimento se catalogado; caso contrário, retorna espaço neutro honesto."""
         clean = sign_id.upper().strip()
@@ -90,8 +307,8 @@ class MotionLibrary:
             return (motion.sample(progress), True)
         return (POSE_NEUTRAL_SIGNING_SPACE, False)
 
-    def _register_canonical_motions(self) -> None:
-        """Registra sinais canônicos com trajetórias temporais multi-keyframe."""
+    def _register_prototype_motions(self) -> None:
+        """Registra poses de demonstração, nunca movimentos validados de Libras."""
 
         # 1. OLÁ / TCHAU (Preparação -> Levantamento -> Aceno duplo -> Posição estável)
         self.register(
