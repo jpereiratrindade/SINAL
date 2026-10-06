@@ -56,7 +56,31 @@ class CliTests(unittest.TestCase):
         self.assertEqual(status, 2)
         self.assertEqual(error.getvalue().strip(), "No subtitle stream found.")
 
+    @patch("sinal.cli.main.prepare_media")
+    def test_process_accepts_video_and_external_srt(self, prepare) -> None:
+        prepare.return_value = Path("prepared.mp4")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = main(
+                [
+                    "process",
+                    "video.mp4",
+                    "--srt",
+                    "captions.srt",
+                    "--output",
+                    "prepared.mp4",
+                ]
+            )
+        self.assertEqual(status, 0)
+        prepare.assert_called_once_with(
+            Path("video.mp4"),
+            Path("captions.srt"),
+            Path("prepared.mp4"),
+            language="por",
+            overwrite=False,
+        )
+        self.assertIn("Media prepared: prepared.mp4", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
-

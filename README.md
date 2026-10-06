@@ -16,6 +16,7 @@ português.
 - inspeção de vídeo, áudio e legendas com FFprobe;
 - seleção do stream padrão de áudio ou legenda;
 - extração de legendas textuais incorporadas para SRT;
+- validação de um SRT externo e incorporação como faixa selecionável em MP4;
 - parser SRT com timestamps e texto multilinha;
 - extração de áudio PCM mono/16 kHz disponível como API para a futura Fase 2;
 - saída humana ou JSON no comando de inspeção;
@@ -81,6 +82,16 @@ Se não houver legenda, o CLI retorna código 2 e informa:
 ```text
 No subtitle stream found.
 ```
+
+Preparar um vídeo e um SRT fornecidos separadamente:
+
+```bash
+sinal process video.mp4 --srt video.srt --output video-sinal.mp4
+```
+
+O comando valida a linha do tempo e incorpora o SRT como uma faixa `mov_text`
+sem recodificar o vídeo ou o áudio. Ele prepara a fonte para as fases seguintes;
+a versão atual ainda não traduz nem renderiza Libras.
 
 O Whisper não é executado nesta fase.
 

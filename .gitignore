@@ -12,3 +12,7 @@ dist/
 output/
 *.audio.wav
 
+# Mídias e legendas locais de trabalho não pertencem ao repositório.
+*.mp4
+*.srt
+!examples/sample.srt

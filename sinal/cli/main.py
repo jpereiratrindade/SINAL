@@ -12,6 +12,7 @@ from typing import Sequence
 from sinal import __version__
 from sinal.config import Settings
 from sinal.media.ffmpeg import FFmpegError
+from sinal.media.prepare import prepare_media
 from sinal.media.probe import MediaInfo, format_duration, inspect_media
 from sinal.media.subtitles import NoSubtitleStreamError, extract_subtitles
 
@@ -44,6 +45,24 @@ def _parser() -> argparse.ArgumentParser:
         "--stream", type=int, help="índice absoluto do stream retornado pelo FFprobe"
     )
     extract_parser.add_argument(
+        "--overwrite", action="store_true", help="substitui o arquivo de saída"
+    )
+
+    process_parser = commands.add_parser(
+        "process",
+        help="valida vídeo + SRT e prepara um MP4 com legenda selecionável",
+    )
+    process_parser.add_argument("media", type=Path, help="arquivo de vídeo")
+    process_parser.add_argument(
+        "--srt", required=True, type=Path, help="arquivo SRT externo"
+    )
+    process_parser.add_argument(
+        "-o", "--output", type=Path, help="MP4/MOV de saída (padrão: <vídeo>.sinal.mp4)"
+    )
+    process_parser.add_argument(
+        "--language", default="por", help="idioma ISO 639 da legenda (padrão: por)"
+    )
+    process_parser.add_argument(
         "--overwrite", action="store_true", help="substitui o arquivo de saída"
     )
     return parser
@@ -137,6 +156,19 @@ def main(arguments: Sequence[str] | None = None) -> int:
             )
             print(f"Subtitle extracted: {destination}")
             return 0
+
+        if args.command == "process":
+            logger.debug("preparing %s with subtitles %s", args.media, args.srt)
+            destination = prepare_media(
+                args.media,
+                args.srt,
+                args.output,
+                language=args.language,
+                overwrite=args.overwrite,
+            )
+            print(f"Media prepared: {destination}")
+            print("Subtitle track embedded; Libras rendering is not implemented yet.")
+            return 0
     except NoSubtitleStreamError:
         print("No subtitle stream found.", file=sys.stderr)
         return 2
@@ -153,4 +185,3 @@ def entrypoint() -> None:
 
 if __name__ == "__main__":
     entrypoint()
-
