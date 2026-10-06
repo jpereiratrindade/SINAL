@@ -7,11 +7,13 @@ from typing import Any
 
 from sinal.render.base import LibrasRenderError, LibrasRenderer
 from sinal.render.synthetic import SyntheticPlaceholderRenderer
+from sinal.render.three_d import ThreeDLibrasRenderer
 
 __all__ = [
     "LibrasRenderError",
     "LibrasRenderer",
     "SyntheticPlaceholderRenderer",
+    "ThreeDLibrasRenderer",
     "render_libras",
 ]
 
@@ -28,7 +30,7 @@ def render_libras(
     overwrite: bool = False,
 ) -> Path:
     """Renderiza um documento LIBRAS-IR em vídeo de avatar."""
-    engine = renderer or SyntheticPlaceholderRenderer()
+    engine = renderer or ThreeDLibrasRenderer()
     return engine.render(
         document,
         output_path,
@@ -38,3 +40,4 @@ def render_libras(
         fps=fps,
         overwrite=overwrite,
     )
+
