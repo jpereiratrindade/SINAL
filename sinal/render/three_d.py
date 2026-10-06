@@ -41,6 +41,17 @@ DEFAULT_CAMERA = Camera3D(
 LIGHT_DIR = Vec3(0.4, 0.8, 0.6).normalize()
 
 
+def _escape_drawtext(text: str) -> str:
+    """Escapa caracteres especiais para filtros drawtext do FFmpeg."""
+    return (
+        text.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace("%", "\\%")
+        .replace("\n", " ")
+    )
+
+
 def _shade_color(base_color: Color, normal: Vec3) -> Color:
     diffuse = max(0.0, normal.dot(LIGHT_DIR))
     ambient = 0.45
@@ -341,6 +352,39 @@ class ThreeDLibrasRenderer(LibrasRenderer):
 
         encoder_name, encoder_flags = detect_video_encoder()
 
+        # Constrói os filtros de texto nítido (título, sinal ativo e legendas)
+        footer_y = h - 130 - 4
+        text_filters: list[str] = [
+            f"drawtext=text='ACESSIBILIDADE LIBRAS':fontsize=22:fontcolor=0x7aa2f7:x=(w-text_w)/2:y=16"
+        ]
+
+        for u in utterances:
+            source_text = _escape_drawtext(str(u.get("source", ""))[:45])
+            u_start = float(u.get("source_timing", {}).get("start", 0.0))
+            u_end = float(u.get("source_timing", {}).get("end", 0.0))
+            u_between = f"between(t,{u_start:.3f},{u_end:.3f})"
+
+            text_filters.append(
+                f"drawtext=text='{source_text}':fontsize=18:fontcolor=0x9aa5ce:x=(w-text_w)/2:y={footer_y + 85}:enable='{u_between}'"
+            )
+
+            signs = u.get("signs", [])
+            for sign in signs:
+                sign_id = _escape_drawtext(str(sign.get("id", "")))
+                s_start = float(sign.get("start", u_start))
+                s_dur = float(sign.get("duration", 1.0))
+                s_end = min(s_start + s_dur, u_end)
+                s_between = f"between(t,{s_start:.3f},{s_end:.3f})"
+
+                text_filters.append(
+                    f"drawtext=text='SINAL\\: {sign_id}':fontsize=24:fontcolor=0x73daca:x=(w-text_w)/2:y={footer_y + 24}:enable='{s_between}'"
+                )
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".filter", encoding="utf-8", delete=False) as script_file:
+            script_file.write(f"[0:v]{','.join(text_filters)}[outv]")
+            script_path = Path(script_file.name)
+
         ffmpeg_cmd = [
             "ffmpeg",
             "-nostdin",
@@ -358,6 +402,10 @@ class ThreeDLibrasRenderer(LibrasRenderer):
             str(fps),
             "-i",
             "-",
+            "-filter_complex_script",
+            str(script_path),
+            "-map",
+            "[outv]",
             "-c:v",
             encoder_name,
             *encoder_flags,
@@ -376,6 +424,8 @@ class ThreeDLibrasRenderer(LibrasRenderer):
                 stderr=subprocess.PIPE,
             )
         except OSError as error:
+            if script_path.exists():
+                script_path.unlink()
             raise LibrasRenderError(f"não foi possível iniciar FFmpeg: {error}") from error
 
         assert proc.stdin is not None
@@ -437,5 +487,11 @@ class ThreeDLibrasRenderer(LibrasRenderer):
         except Exception as error:
             proc.kill()
             raise LibrasRenderError(f"erro durante a renderização 3D: {error}") from error
+        finally:
+            if script_path.exists():
+                try:
+                    script_path.unlink()
+                except OSError:
+                    pass
 
         return destination
