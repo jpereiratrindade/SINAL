@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sinal.compose import compose_libras_video
-from sinal.libras import MockLibrasTranslator, VlibrasHttpTranslator, write_ir
+from sinal.libras import (
+    MockLibrasTranslator,
+    RuleBasedLibrasTranslator,
+    VlibrasHttpTranslator,
+    write_ir,
+)
 from sinal.media.prepare import prepare_media
 from sinal.media.probe import inspect_media
 from sinal.media.subtitles import extract_subtitles, load_srt
@@ -82,7 +87,9 @@ def run_pipeline(
         prepared_media_path = source
 
     # 3. Gera e valida o LIBRAS-IR
-    if engine == "mock":
+    if engine in ("rules", "rule-based"):
+        translator = RuleBasedLibrasTranslator()
+    elif engine == "mock":
         translator = MockLibrasTranslator()
     elif engine == "vlibras":
         if not allow_network:

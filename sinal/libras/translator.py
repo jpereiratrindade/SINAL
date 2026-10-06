@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
+from sinal.language.glosser import pt_to_libras_gloss
 from sinal.libras.ir import build_ir
 from sinal.media.subtitles import SubtitleCue
 
@@ -32,6 +33,21 @@ class MockLibrasTranslator:
             translator="mock",
             automatic=True,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RuleBasedLibrasTranslator:
+    """Traduz português para glosas estruturadas de Libras por meio de regras linguísticas."""
+
+    def translate(self, cues: list[SubtitleCue]) -> dict[str, object]:
+        glosses = [pt_to_libras_gloss(cue.text) for cue in cues]
+        return build_ir(
+            cues,
+            glosses,
+            translator="rule-based",
+            automatic=True,
+        )
+
 
 
 @dataclass(frozen=True, slots=True)

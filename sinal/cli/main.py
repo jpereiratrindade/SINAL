@@ -14,6 +14,7 @@ from sinal.compose import POSITIONS, compose_libras_video
 from sinal.config import Settings
 from sinal.libras import (
     MockLibrasTranslator,
+    RuleBasedLibrasTranslator,
     VlibrasHttpTranslator,
     load_ir,
     write_ir,
@@ -100,8 +101,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     process_parser.add_argument(
         "--engine",
-        choices=("mock", "vlibras"),
-        default="mock",
+        choices=("rules", "rule-based", "mock", "vlibras"),
+        default="rules",
         help="motor de tradução LIBRAS-IR (padrão: %(default)s)",
     )
     process_parser.add_argument(
@@ -135,7 +136,7 @@ def _parser() -> argparse.ArgumentParser:
 
     ir_parser = commands.add_parser(
         "build-ir",
-        help="gera LIBRAS-IR a partir de um SRT sem alegar renderização",
+        help="gera LIBRAS-IR a partir de um SRT",
     )
     ir_parser.add_argument("srt", type=Path, help="arquivo SRT em português")
     ir_parser.add_argument(
@@ -143,9 +144,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     ir_parser.add_argument(
         "--engine",
-        choices=("mock", "vlibras"),
-        required=True,
-        help="motor explícito: mock registra lacunas; vlibras chama uma API configurada",
+        choices=("rules", "rule-based", "mock", "vlibras"),
+        default="rules",
+        help="motor de tradução: rules (glosas locais), mock (lacunas) ou vlibras (padrão: %(default)s)",
     )
     ir_parser.add_argument(
         "--endpoint",
@@ -360,7 +361,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
             if not cues:
                 raise ValueError("o SRT não contém nenhuma legenda")
             destination = args.output or args.srt.with_suffix(".libras-ir.json")
-            if args.engine == "mock":
+            if args.engine in ("rules", "rule-based"):
+                translator = RuleBasedLibrasTranslator()
+            elif args.engine == "mock":
                 translator = MockLibrasTranslator()
             else:
                 if not args.allow_network:
@@ -374,6 +377,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
             print(f"LIBRAS-IR written: {written}")
             if args.engine == "mock":
                 print("Translation pending: mock recorded gaps and generated no signs.")
+            elif args.engine in ("rules", "rule-based"):
+                print("Libras glosses generated via linguistic rules.")
             else:
                 print("Machine translation generated; human Libras review is required.")
             return 0
