@@ -36,9 +36,21 @@ Quando vídeo e SRT chegam separados, `sinal process VIDEO --srt LEGENDA`
 valida que a legenda não ultrapassa a duração da mídia e cria um MP4 com faixa
 `mov_text`. Essa preparação não executa tradução ou renderização de Libras.
 
-## Artefatos futuros
+Quando já existe um SRT, `sinal build-ir` pode avançar diretamente para o
+intermediário linguístico. `--engine mock` mantém a linha do tempo e registra
+lacunas; `--engine vlibras` envia cada segmento a uma instância explicitamente
+configurada e requer `--allow-network`. Ambos produzem um LIBRAS-IR validável,
+mas nenhum deles renderiza avatar nesta etapa.
 
-Quando o pipeline completo existir, `keep_intermediate` preservará:
+Um backend de renderização futuro deve produzir `avatar.mp4` na mesma timeline
+da origem. `sinal compose ORIGEM --avatar AVATAR` compara as durações antes de
+aplicar o overlay, preserva áudio e converte legendas textuais para `mov_text`.
+Assim, um arquivo de avatar curto não é aceito como se estivesse sincronizado.
+
+## Artefatos intermediários
+
+O LIBRAS-IR já pode ser produzido. Quando o pipeline completo existir,
+`keep_intermediate` preservará:
 
 ```text
 output/

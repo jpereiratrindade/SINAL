@@ -1,4 +1,4 @@
-"""Primeiro CLI do SINAL: inspeção e extração de legendas."""
+"""CLI do SINAL para mídia, legendas e LIBRAS-IR."""
 
 from __future__ import annotations
 
@@ -10,11 +10,19 @@ from pathlib import Path
 from typing import Sequence
 
 from sinal import __version__
+from sinal.compose import POSITIONS, compose_libras_video
 from sinal.config import Settings
+from sinal.libras import (
+    MockLibrasTranslator,
+    VlibrasHttpTranslator,
+    load_ir,
+    write_ir,
+)
+from sinal.libras.translator import LibrasTranslationError
 from sinal.media.ffmpeg import FFmpegError
 from sinal.media.prepare import prepare_media
 from sinal.media.probe import MediaInfo, format_duration, inspect_media
-from sinal.media.subtitles import NoSubtitleStreamError, extract_subtitles
+from sinal.media.subtitles import NoSubtitleStreamError, extract_subtitles, load_srt
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -63,6 +71,68 @@ def _parser() -> argparse.ArgumentParser:
         "--language", default="por", help="idioma ISO 639 da legenda (padrão: por)"
     )
     process_parser.add_argument(
+        "--overwrite", action="store_true", help="substitui o arquivo de saída"
+    )
+
+    ir_parser = commands.add_parser(
+        "build-ir",
+        help="gera LIBRAS-IR a partir de um SRT sem alegar renderização",
+    )
+    ir_parser.add_argument("srt", type=Path, help="arquivo SRT em português")
+    ir_parser.add_argument(
+        "-o", "--output", type=Path, help="JSON de saída (padrão: <SRT>.libras-ir.json)"
+    )
+    ir_parser.add_argument(
+        "--engine",
+        choices=("mock", "vlibras"),
+        required=True,
+        help="motor explícito: mock registra lacunas; vlibras chama uma API configurada",
+    )
+    ir_parser.add_argument(
+        "--endpoint",
+        default="http://127.0.0.1:3000",
+        help="URL base de uma instância VLibras API (padrão: %(default)s)",
+    )
+    ir_parser.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="autoriza o envio do texto à instância definida por --endpoint",
+    )
+    ir_parser.add_argument(
+        "--overwrite", action="store_true", help="substitui o arquivo de saída"
+    )
+
+    validate_parser = commands.add_parser(
+        "validate-ir", help="valida um documento LIBRAS-IR 0.1.0"
+    )
+    validate_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
+
+    compose_parser = commands.add_parser(
+        "compose", help="sobrepõe um vídeo de avatar já sincronizado à mídia"
+    )
+    compose_parser.add_argument("media", type=Path, help="vídeo de origem")
+    compose_parser.add_argument(
+        "--avatar", required=True, type=Path, help="vídeo do avatar na mesma timeline"
+    )
+    compose_parser.add_argument(
+        "-o", "--output", type=Path, help="MP4/MOV final (padrão: <vídeo>.libras.mp4)"
+    )
+    compose_parser.add_argument(
+        "--position",
+        choices=sorted(POSITIONS),
+        default="bottom-right",
+        help="posição do avatar (padrão: %(default)s)",
+    )
+    compose_parser.add_argument(
+        "--scale",
+        type=float,
+        default=0.28,
+        help="fração da largura ocupada pelo avatar (padrão: %(default)s)",
+    )
+    compose_parser.add_argument(
+        "--margin", type=int, default=24, help="margem em pixels (padrão: %(default)s)"
+    )
+    compose_parser.add_argument(
         "--overwrite", action="store_true", help="substitui o arquivo de saída"
     )
     return parser
@@ -167,12 +237,62 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 overwrite=args.overwrite,
             )
             print(f"Media prepared: {destination}")
-            print("Subtitle track embedded; Libras rendering is not implemented yet.")
+            print("Subtitle track embedded; use build-ir to prepare the translation stage.")
+            return 0
+
+        if args.command == "build-ir":
+            cues = load_srt(args.srt)
+            if not cues:
+                raise ValueError("o SRT não contém nenhuma legenda")
+            destination = args.output or args.srt.with_suffix(".libras-ir.json")
+            if args.engine == "mock":
+                translator = MockLibrasTranslator()
+            else:
+                if not args.allow_network:
+                    raise ValueError(
+                        "--engine vlibras requer --allow-network para autorizar o "
+                        "envio do texto ao endpoint configurado"
+                    )
+                translator = VlibrasHttpTranslator(endpoint=args.endpoint)
+            document = translator.translate(cues)
+            written = write_ir(document, destination, overwrite=args.overwrite)
+            print(f"LIBRAS-IR written: {written}")
+            if args.engine == "mock":
+                print("Translation pending: mock recorded gaps and generated no signs.")
+            else:
+                print("Machine translation generated; human Libras review is required.")
+            return 0
+
+        if args.command == "validate-ir":
+            document = load_ir(args.document)
+            print(
+                f"Valid LIBRAS-IR {document['version']}: "
+                f"{len(document['utterances'])} utterance(s)"
+            )
+            return 0
+
+        if args.command == "compose":
+            destination = compose_libras_video(
+                args.media,
+                args.avatar,
+                args.output,
+                position=args.position,
+                scale=args.scale,
+                margin=args.margin,
+                overwrite=args.overwrite,
+            )
+            print(f"Libras video composed: {destination}")
             return 0
     except NoSubtitleStreamError:
         print("No subtitle stream found.", file=sys.stderr)
         return 2
-    except (FileNotFoundError, FileExistsError, ValueError, FFmpegError) as error:
+    except (
+        FileNotFoundError,
+        FileExistsError,
+        ValueError,
+        FFmpegError,
+        LibrasTranslationError,
+    ) as error:
         print(f"SINAL error: {error}", file=sys.stderr)
         return 1
 

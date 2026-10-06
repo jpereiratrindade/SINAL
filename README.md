@@ -8,8 +8,10 @@ de conteúdo, transcrição, tradução, LIBRAS-IR, movimento, renderização e
 composição. Ele não trata Libras como substituição palavra por palavra do
 português.
 
-> Estado atual: constituição do projeto e pipeline de mídia (Fases 0 e 1).
-> Ainda não há transcrição, tradução para Libras, avatar nem composição final.
+> Estado atual: pipeline de mídia (Fases 0 e 1) e primeiro marco do LIBRAS-IR
+> (Fase 3). Ainda não há transcrição nem geração do vídeo do avatar; a tradução
+> automática requer uma instância VLibras configurada e revisão humana. Um vídeo
+> de avatar já sincronizado pode ser composto sobre a mídia.
 
 ## O que já funciona
 
@@ -18,6 +20,10 @@ português.
 - extração de legendas textuais incorporadas para SRT;
 - validação de um SRT externo e incorporação como faixa selecionável em MP4;
 - parser SRT com timestamps e texto multilinha;
+- geração e validação do LIBRAS-IR 0.1.0;
+- mock honesto, que registra tradução pendente sem inventar sinais;
+- adapter opcional para o endpoint de tradução de uma instância VLibras API;
+- composição FFmpeg de um avatar já renderizado e sincronizado;
 - extração de áudio PCM mono/16 kHz disponível como API para a futura Fase 2;
 - saída humana ou JSON no comando de inspeção;
 - erros explícitos quando FFmpeg, arquivo, áudio ou legenda não estão disponíveis.
@@ -93,6 +99,40 @@ O comando valida a linha do tempo e incorpora o SRT como uma faixa `mov_text`
 sem recodificar o vídeo ou o áudio. Ele prepara a fonte para as fases seguintes;
 a versão atual ainda não traduz nem renderiza Libras.
 
+Gerar o intermediário de forma segura, registrando as lacunas sem fingir uma
+tradução:
+
+```bash
+sinal build-ir video.srt --engine mock --output video.libras-ir.json
+sinal validate-ir video.libras-ir.json
+```
+
+Para uma instância VLibras API instalada e controlada por você:
+
+```bash
+sinal build-ir video.srt --engine vlibras \
+  --endpoint http://127.0.0.1:3000 \
+  --allow-network \
+  --output video.libras-ir.json
+```
+
+`--allow-network` é obrigatório porque o texto das legendas será enviado ao
+endpoint. A glosa retornada é automática, recebe temporização estimada e exige
+revisão humana; este comando ainda não produz o vídeo do avatar.
+
+Quando um renderer produzir um `avatar.mp4` com a mesma timeline da origem, o
+SINAL valida as durações e cria o vídeo final preservando áudio e legendas:
+
+```bash
+sinal compose video-sinal.mp4 \
+  --avatar avatar.mp4 \
+  --position bottom-right \
+  --output video-final.mp4
+```
+
+O avatar pode ocupar de 0 a 100% da largura com `--scale` (padrão `0.28`). O
+compositor não aceita silenciosamente timelines diferentes.
+
 O Whisper não é executado nesta fase.
 
 ## Testes
@@ -137,8 +177,9 @@ espalhada pelo sistema. Veja [Arquitetura](docs/ARCHITECTURE.md),
 - arquivos com múltiplas legendas exigem `--stream` quando a seleção padrão não
   for a desejada;
 - a configuração TOML é um contrato inicial e ainda não é carregada pelo CLI;
-- não existe tradução automática nem equivalência garantida a interpretação
-  humana.
+- o adapter VLibras traduz texto em glosa, mas a geração/renderização pública de
+  vídeo do avatar ainda não está integrada;
+- tradução automática não garante equivalência com interpretação humana.
 
 ## Ética e revisão
 

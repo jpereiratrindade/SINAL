@@ -33,7 +33,9 @@ sinal = "sinal.cli.main:entrypoint"
 where = ["."]
 include = ["sinal*"]
 
+[tool.setuptools.package-data]
+"sinal.libras" = ["schema/*.json"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
-

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sinal.local/schema/libras-ir-0.1.0.json",
+  "title": "SINAL LIBRAS-IR",
+  "type": "object",
+  "required": ["schema", "version", "source_language", "target_language", "metadata", "review", "utterances"],
+  "properties": {
+    "schema": {"const": "sinal.libras-ir"},
+    "version": {"const": "0.1.0"},
+    "source_language": {"const": "pt-BR"},
+    "target_language": {"const": "libras-BR"},
+    "metadata": {
+      "type": "object",
+      "required": ["generated_by", "generator_version", "source", "translator", "automatic"],
+      "properties": {
+        "generated_by": {"type": "string"},
+        "generator_version": {"type": "string"},
+        "source": {"type": "string"},
+        "translator": {"type": "string", "minLength": 1},
+        "automatic": {"type": "boolean"}
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["machine-generated", "translation-pending", "human-reviewed", "human-corrected", "approved"]
+        }
+      }
+    },
+    "utterances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "source_timing", "semantic", "translation", "signs", "non_manual", "gaps"],
+        "properties": {
+          "source": {"type": "string", "minLength": 1},
+          "source_timing": {
+            "type": "object",
+            "required": ["start", "end"],
+            "properties": {
+              "start": {"type": "number", "minimum": 0},
+              "end": {"type": "number", "minimum": 0}
+            }
+          },
+          "semantic": {"type": "object"},
+          "translation": {
+            "type": "object",
+            "required": ["gloss", "status"],
+            "properties": {
+              "gloss": {"type": ["string", "null"]},
+              "status": {"enum": ["pending", "machine-generated"]}
+            }
+          },
+          "signs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "start", "duration", "confidence", "timing_source"],
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "start": {"type": "number", "minimum": 0},
+                "duration": {"type": "number", "minimum": 0},
+                "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+                "timing_source": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "non_manual": {
+            "type": "object",
+            "required": ["eyebrows", "eyes", "mouth", "head", "gaze", "body"]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["reason", "review_required"],
+              "properties": {
+                "source": {"type": "string"},
+                "reason": {"type": "string", "minLength": 1},
+                "review_required": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

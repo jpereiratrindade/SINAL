@@ -5,6 +5,7 @@ import json
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from sinal.cli.main import main
@@ -80,6 +81,78 @@ class CliTests(unittest.TestCase):
             overwrite=False,
         )
         self.assertIn("Media prepared: prepared.mp4", output.getvalue())
+
+    def test_build_and_validate_mock_ir(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            srt = root / "captions.srt"
+            destination = root / "captions.libras-ir.json"
+            srt.write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\nOlá.\n",
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+            with redirect_stdout(output):
+                build_status = main(
+                    [
+                        "build-ir",
+                        str(srt),
+                        "--engine",
+                        "mock",
+                        "--output",
+                        str(destination),
+                    ]
+                )
+                validate_status = main(["validate-ir", str(destination)])
+
+        self.assertEqual(build_status, 0)
+        self.assertEqual(validate_status, 0)
+        self.assertIn("Translation pending", output.getvalue())
+        self.assertIn("Valid LIBRAS-IR 0.1.0", output.getvalue())
+
+    def test_vlibras_requires_explicit_network_permission(self) -> None:
+        with TemporaryDirectory() as directory:
+            srt = Path(directory) / "captions.srt"
+            srt.write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\nOlá.\n",
+                encoding="utf-8",
+            )
+            error = io.StringIO()
+            with redirect_stderr(error):
+                status = main(["build-ir", str(srt), "--engine", "vlibras"])
+
+        self.assertEqual(status, 1)
+        self.assertIn("requer --allow-network", error.getvalue())
+
+    @patch("sinal.cli.main.compose_libras_video")
+    def test_compose_accepts_a_synchronized_avatar_video(self, compose) -> None:
+        compose.return_value = Path("final.mp4")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = main(
+                [
+                    "compose",
+                    "prepared.mp4",
+                    "--avatar",
+                    "avatar.mp4",
+                    "--output",
+                    "final.mp4",
+                    "--position",
+                    "bottom-left",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        compose.assert_called_once_with(
+            Path("prepared.mp4"),
+            Path("avatar.mp4"),
+            Path("final.mp4"),
+            position="bottom-left",
+            scale=0.28,
+            margin=24,
+            overwrite=False,
+        )
+        self.assertIn("Libras video composed: final.mp4", output.getvalue())
 
 
 if __name__ == "__main__":

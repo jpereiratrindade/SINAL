@@ -7,7 +7,8 @@ renderização. Ele existe para que trocar VLibras por um motor próprio não ex
 alterar mídia, transcrição ou análise do português.
 
 O exemplo abaixo é arquitetural, não uma recomendação linguística. O esquema
-formal e o validador pertencem à Fase 3.
+formal está em `sinal/libras/schema/libras-ir-0.1.0.json` e as invariantes
+temporais também são verificadas pelo validador Python.
 
 ```json
 {
@@ -23,21 +24,18 @@ formal e o validador pertencem à Fase 3.
     "automatic": true
   },
   "review": {
-    "status": "machine-generated"
+    "status": "translation-pending"
   },
   "utterances": [
     {
       "source": "Amanhã teremos aula às oito horas.",
       "source_timing": {"start": 12.4, "end": 15.9},
-      "semantic": {
-        "topic": "AULA",
-        "time": "AMANHÃ",
-        "time_detail": "OITO-HORAS"
+      "semantic": {},
+      "translation": {
+        "gloss": null,
+        "status": "pending"
       },
-      "signs": [
-        {"id": "AMANHA", "start": 12.4, "duration": 0.7, "confidence": null},
-        {"id": "AULA", "start": 13.1, "duration": 0.8, "confidence": null}
-      ],
+      "signs": [],
       "non_manual": {
         "eyebrows": null,
         "eyes": null,
@@ -45,13 +43,20 @@ formal e o validador pertencem à Fase 3.
         "head": null,
         "gaze": null,
         "body": null
-      }
+      },
+      "gaps": [
+        {
+          "source": "Amanhã teremos aula às oito horas.",
+          "reason": "translation-not-run",
+          "review_required": true
+        }
+      ]
     }
   ]
 }
 ```
 
-## Invariantes planejadas
+## Invariantes implementadas
 
 - `schema` e versão semântica são obrigatórios;
 - intervalos e durações são não negativos e finitos;
@@ -60,9 +65,22 @@ formal e o validador pertencem à Fase 3.
   explícita, soletração quando decidida pelo tradutor ou erro revisável;
 - marcadores manuais e não manuais são dados linguísticos;
 - confiança ausente é diferente de confiança máxima;
-- `review.status` aceita inicialmente `machine-generated`, `human-reviewed`,
-  `human-corrected` ou `approved`;
+- `review.status` também distingue `translation-pending` de conteúdo
+  `machine-generated`, `human-reviewed`, `human-corrected` ou `approved`;
 - metadados identificam fonte, gerador, tradutor e caráter automático.
+
+## CLI
+
+```bash
+sinal build-ir legenda.srt --engine mock --output legenda.libras-ir.json
+sinal validate-ir legenda.libras-ir.json
+```
+
+O motor `mock` nunca cria glosas ou sinais falsos. Para cada legenda ele gera
+uma lacuna revisável com `translation-not-run`. O motor `vlibras` somente é
+chamado com `--allow-network` e um endpoint explícito; seus sinais recebem
+`timing_source: estimated-uniform`, pois o tradutor textual não fornece o tempo
+individual de cada sinal.
 
 ## Evolução corporal
 
@@ -77,4 +95,3 @@ Mudança incompatível incrementa a versão principal. Campos novos opcionais
 incrementam a versão secundária; correções documentais e de validação que não
 alterem documentos válidos incrementam patch. Renderers declaram as versões que
 aceitam e devem falhar claramente diante de versão incompatível.
-

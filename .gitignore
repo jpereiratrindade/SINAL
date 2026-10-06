@@ -15,4 +15,5 @@ output/
 # Mídias e legendas locais de trabalho não pertencem ao repositório.
 *.mp4
 *.srt
+*.libras-ir.json
 !examples/sample.srt

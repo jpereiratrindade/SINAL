@@ -27,25 +27,30 @@ vídeo, áudio e legenda textual.
 - SRT e JSON intermediários;
 - mocks e testes sem GPU.
 
-## Fase 3 — LIBRAS-IR
+## Fase 3 — LIBRAS-IR (núcleo implementado)
 
 - JSON Schema 0.1.0 e validador;
 - segmentos, semântica, sinais e marcadores não manuais;
 - proveniência, confiança e revisão;
 - `MockLibrasTranslator` para desenvolver o pipeline sem alegar tradução real.
 
-## Fase 4 — Pesquisa e adapter VLibras
+Pendente nesta fase: editor/fluxo de revisão humana e enriquecimento semântico
+e não manual além dos campos reservados no contrato.
 
-- verificar API local, licença, formatos e cobertura linguística;
-- protótipo isolado de tradução/renderização;
+## Fase 4 — Pesquisa e adapter VLibras (em andamento)
+
+- contrato textual oficial auditado e adapter HTTP configurável implementado;
+- verificar implantação local completa, licença dos componentes e cobertura;
+- protótipo isolado de renderização quando o Video Core estiver disponível;
 - mapa explícito entre recursos do LIBRAS-IR e do backend;
 - decisão documentada de empacotamento e fallback.
 
-## Fases 5 e 6 — Render e composição
+## Fases 5 e 6 — Render e composição (compositor overlay implementado)
 
 - contrato `LibrasRenderer`, mock e backend escolhido;
 - `avatar.mp4` com timeline registrada;
-- overlay inferior esquerdo/direito e side-by-side por FFmpeg;
+- overlay nos quatro cantos por FFmpeg, com validação de timeline (implementado);
+- side-by-side por FFmpeg;
 - `final.mp4` sem descartar intermediários.
 
 ## Depois do MVP
@@ -54,4 +59,3 @@ Somente após o pipeline offline estar validado: avatar próprio, movimento
 esquelético detalhado, revisão humana assistida e, por último, estudo de tempo
 real. Treinamento próprio, mobile e arquitetura distribuída não pertencem ao
 primeiro ciclo.
-

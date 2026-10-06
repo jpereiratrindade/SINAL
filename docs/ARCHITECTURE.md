@@ -4,7 +4,8 @@
 
 O SINAL transforma fontes em português brasileiro em uma representação visual
 em Libras, mantendo independentes quatro conceitos: conteúdo, tradução,
-movimento e avatar. A primeira entrega cobre apenas constituição e mídia.
+movimento e avatar. A entrega atual cobre constituição, mídia e o núcleo do
+LIBRAS-IR.
 
 ```text
 Input → Media → Transcription → Language → LIBRAS-IR → Render → Compose
@@ -19,13 +20,13 @@ pacote Python com portas pequenas para ferramentas externas.
 
 | Camada | Responsabilidade | Estado |
 |---|---|---|
-| `cli` | comandos e apresentação de erros/resultados | Fase 1 |
+| `cli` | comandos e apresentação de erros/resultados | Fases 1 e 3 |
 | `media` | FFprobe, FFmpeg, streams, SRT e áudio | Fase 1 |
 | `transcription` | áudio → segmentos pt-BR com tempo | Fase 2 |
 | `language` | normalização, segmentação e tradução | Fase 3+ |
-| `libras` | modelo, validação, léxico e LIBRAS-IR | Fase 3 |
+| `libras` | modelo, validação e LIBRAS-IR | núcleo da Fase 3 |
 | `render` | interface e adapters de avatar | Fase 4+ |
-| `compose` | overlay/side-by-side e sincronização | Fase 6 |
+| `compose` | overlay validado de avatar sincronizado | núcleo da Fase 6 |
 | `pipeline` | prioridade de fontes e orquestração | Fase 2+ |
 | `config` | configuração central imutável | base inicial |
 
@@ -48,7 +49,8 @@ os testes também executam com `unittest`.
 
 - `faster-whisper`, apenas na Fase 2 e como backend local de `Transcriber`;
 - VLibras, após validar API local, formatos, distribuição e licença;
-- JSON Schema para validação do LIBRAS-IR, quando o esquema 0.1.0 for codificado.
+- renderer/video core compatível com VLibras, caso possa ser implantado sob
+  contrato e licença adequados.
 
 ## Regras entre camadas
 
@@ -95,4 +97,3 @@ pipeline dependerá da interface `LibrasRenderer`, nunca de tipos do VLibras.
 - [ADR-0003: processamento local-first](ADR/0003-local-first.md)
 - [ADR-0004: VLibras isolado por adapter](ADR/0004-vlibras-adapter.md)
 - [ADR-0005: licença temporariamente não definida](ADR/0005-license-pending.md)
-
