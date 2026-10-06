@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sinal-libras"
+version = "0.1.0"
+description = "Sistema Inteligente de Acessibilidade Narrativa em Libras"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "Projeto SINAL" },
+]
+keywords = ["accessibility", "libras", "subtitles", "ffmpeg"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Video",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+]
+
+[project.scripts]
+sinal = "sinal.cli.main:entrypoint"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sinal*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+

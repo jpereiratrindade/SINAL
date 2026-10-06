@@ -1,0 +1,18 @@
+[input]
+language = "pt-BR"
+
+[transcription]
+engine = "whisper"
+model = "small"
+
+[libras]
+engine = "vlibras"
+
+[render]
+mode = "overlay"
+avatar_scale = 0.28
+position = "bottom-right"
+
+[output]
+keep_intermediate = true
+
