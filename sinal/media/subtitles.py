@@ -47,6 +47,44 @@ def timestamp_to_seconds(timestamp: str) -> float:
     return hours * 3600 + minutes * 60 + seconds + millis / 1000
 
 
+def format_timestamp(seconds: float) -> str:
+    """Converte segundos em formato de timestamp SRT ``HH:MM:SS,mmm``."""
+    if seconds < 0:
+        raise ValueError("tempo em segundos não pode ser negativo")
+    total_millis = round(seconds * 1000)
+    hours = total_millis // 3_600_000
+    remainder = total_millis % 3_600_000
+    minutes = remainder // 60_000
+    remainder = remainder % 60_000
+    secs = remainder // 1000
+    millis = remainder % 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def write_srt(
+    cues: list[SubtitleCue],
+    output_path: str | Path,
+    *,
+    overwrite: bool = False,
+) -> Path:
+    """Serializa uma lista de legendas em formato SRT."""
+    destination = Path(output_path)
+    if destination.exists() and not overwrite:
+        raise FileExistsError(
+            f"arquivo de saída já existe: {destination}; use --overwrite para substituir"
+        )
+    if not destination.parent.is_dir():
+        raise FileNotFoundError(f"diretório de saída não encontrado: {destination.parent}")
+
+    content = "\n\n".join(
+        f"{c.index}\n{format_timestamp(c.start_seconds)} --> {format_timestamp(c.end_seconds)}\n{c.text}"
+        for c in cues
+    )
+    destination.write_text(content + ("\n" if content else ""), encoding="utf-8")
+    return destination
+
+
+
 def parse_srt(content: str) -> list[SubtitleCue]:
     """Lê conteúdo SRT, incluindo texto multilinha e fim de linha Windows."""
 

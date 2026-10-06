@@ -154,6 +154,51 @@ class CliTests(unittest.TestCase):
         )
         self.assertIn("Libras video composed: final.mp4", output.getvalue())
 
+    @patch("sinal.cli.main.transcribe_media")
+    def test_transcribe_command(self, mock_transcribe) -> None:
+        from sinal.media.subtitles import SubtitleCue
+
+        mock_transcribe.return_value = [SubtitleCue(1, 0.0, 2.0, "Teste de transcrição")]
+        with TemporaryDirectory() as directory:
+            out_srt = Path(directory) / "test.srt"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                status = main(["transcribe", "dummy.mp4", "-o", str(out_srt)])
+
+            self.assertEqual(status, 0)
+            self.assertTrue(out_srt.exists())
+            self.assertIn("Transcription completed", output.getvalue())
+
+    @patch("sinal.cli.main.render_libras")
+    @patch("sinal.cli.main.load_ir")
+    def test_render_command(self, mock_load, mock_render) -> None:
+        mock_load.return_value = {"version": "0.1.0"}
+        mock_render.return_value = Path("avatar.mp4")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = main(["render", "test.libras-ir.json", "--duration", "5.0"])
+
+        self.assertEqual(status, 0)
+        self.assertIn("Libras avatar rendered", output.getvalue())
+
+    @patch("sinal.cli.main.run_pipeline")
+    def test_process_render_full_pipeline(self, mock_pipeline) -> None:
+        from sinal.pipeline import PipelineResult
+
+        mock_pipeline.return_value = PipelineResult(
+            prepared_media=Path("prep.mp4"),
+            srt_path=Path("sub.srt"),
+            ir_path=Path("ir.json"),
+            avatar_path=Path("av.mp4"),
+            final_video=Path("fin.mp4"),
+        )
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = main(["process", "orig.mp4", "--srt", "orig.srt", "--render"])
+
+        self.assertEqual(status, 0)
+        self.assertIn("Final video composed: fin.mp4", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

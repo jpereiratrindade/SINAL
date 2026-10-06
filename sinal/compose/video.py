@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sinal.media.ffmpeg import run_ffmpeg
+from sinal.media.ffmpeg import detect_video_encoder, run_ffmpeg
 from sinal.media.probe import MediaInfo, inspect_media
 
 
@@ -102,6 +102,8 @@ def compose_libras_video(
         f"[base][avatar]overlay=x={x}:y={y}:eof_action=pass:shortest=0[v]"
     )
 
+    encoder_name, encoder_flags = detect_video_encoder()
+
     run_ffmpeg(
         [
             "-nostdin",
@@ -124,11 +126,8 @@ def compose_libras_video(
             "-map_metadata",
             "0",
             "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "20",
+            encoder_name,
+            *encoder_flags,
             "-pix_fmt",
             "yuv420p",
             "-c:a",

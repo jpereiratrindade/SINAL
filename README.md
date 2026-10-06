@@ -8,25 +8,28 @@ de conteúdo, transcrição, tradução, LIBRAS-IR, movimento, renderização e
 composição. Ele não trata Libras como substituição palavra por palavra do
 português.
 
-> Estado atual: pipeline de mídia (Fases 0 e 1) e primeiro marco do LIBRAS-IR
-> (Fase 3). Ainda não há transcrição nem geração do vídeo do avatar; a tradução
-> automática requer uma instância VLibras configurada e revisão humana. Um vídeo
-> de avatar já sincronizado pode ser composto sobre a mídia.
+> Estado atual: pipeline de acessibilidade de ponta a ponta implementado.
+> Suporta inspeção, extração e transcrição de legendas (Whisper/mock), geração e
+> validação de LIBRAS-IR (mock/VLibras), renderização de avatar/janela de Libras e
+> composição audiovisual com preservação de áudio e legendas.
 
 ## O que já funciona
 
 - inspeção de vídeo, áudio e legendas com FFprobe;
 - seleção do stream padrão de áudio ou legenda;
 - extração de legendas textuais incorporadas para SRT;
-- validação de um SRT externo e incorporação como faixa selecionável em MP4;
-- parser SRT com timestamps e texto multilinha;
-- geração e validação do LIBRAS-IR 0.1.0;
+- transcrição de áudio para SRT (`sinal transcribe`, com suporte a Whisper e mock);
+- validação de SRT externo e incorporação como faixa selecionável em MP4;
+- parser e escritor SRT com timestamps e texto multilinha;
+- geração e validação estrita do LIBRAS-IR 0.1.0;
 - mock honesto, que registra tradução pendente sem inventar sinais;
 - adapter opcional para o endpoint de tradução de uma instância VLibras API;
-- composição FFmpeg de um avatar já renderizado e sincronizado;
-- extração de áudio PCM mono/16 kHz disponível como API para a futura Fase 2;
+- renderizador sintético de janela de Libras (`sinal render`), gerando `avatar.mp4` animado e sincronizado com a linha do tempo;
+- compositor FFmpeg (`sinal compose`), sobrepondo o avatar nos quatro cantos (`bottom-right`, `bottom-left`, `top-right`, `top-left`) com preservação de faixas;
+- orquestrador completo de ponta a ponta (`sinal process --render`);
+- detecção dinâmica de encoders H.264/compatíveis no FFmpeg (suporte multiplataforma para Fedora, Ubuntu, Arch, etc.);
 - saída humana ou JSON no comando de inspeção;
-- erros explícitos quando FFmpeg, arquivo, áudio ou legenda não estão disponíveis.
+- erros explícitos e sem dependências ocultas.
 
 ## Requisitos
 
@@ -62,78 +65,47 @@ python -m sinal --version
 
 ## Uso
 
-Inspecionar os streams:
-
+### 1. Inspecionar mídia
 ```bash
 sinal inspect video.mp4
 sinal inspect video.mp4 --json
-sinal --verbose inspect video.mp4
 ```
 
-Extrair a primeira legenda padrão (ou a primeira disponível):
-
+### 2. Extrair ou transcrever legendas
 ```bash
-sinal extract-subtitles video.mp4
+# Extrair de faixa embutida no arquivo
+sinal extract-subtitles video.mp4 -o video.srt
+
+# Ou transcrever o áudio
+sinal transcribe video.mp4 -o video.srt --engine mock
 ```
 
-Isso produz `video.srt`. Para escolher um stream pelo índice mostrado no
-`inspect`, definir outro destino ou substituir um arquivo existente:
-
+### 3. Gerar e validar o LIBRAS-IR
 ```bash
-sinal extract-subtitles video.mkv --stream 3 --output legenda.srt --overwrite
-```
-
-Se não houver legenda, o CLI retorna código 2 e informa:
-
-```text
-No subtitle stream found.
-```
-
-Preparar um vídeo e um SRT fornecidos separadamente:
-
-```bash
-sinal process video.mp4 --srt video.srt --output video-sinal.mp4
-```
-
-O comando valida a linha do tempo e incorpora o SRT como uma faixa `mov_text`
-sem recodificar o vídeo ou o áudio. Ele prepara a fonte para as fases seguintes;
-a versão atual ainda não traduz nem renderiza Libras.
-
-Gerar o intermediário de forma segura, registrando as lacunas sem fingir uma
-tradução:
-
-```bash
+# Modo mock honesto (registra lacunas e estrutura temporal sem falsas glosas)
 sinal build-ir video.srt --engine mock --output video.libras-ir.json
+
+# Ou usando uma instância VLibras local configurada
+sinal build-ir video.srt --engine vlibras --endpoint http://127.0.0.1:3000 --allow-network
+
+# Validar contra o esquema 0.1.0
 sinal validate-ir video.libras-ir.json
 ```
 
-Para uma instância VLibras API instalada e controlada por você:
-
+### 4. Renderizar o avatar de Libras
 ```bash
-sinal build-ir video.srt --engine vlibras \
-  --endpoint http://127.0.0.1:3000 \
-  --allow-network \
-  --output video.libras-ir.json
+sinal render video.libras-ir.json --media video.mp4 -o avatar.mp4
 ```
 
-`--allow-network` é obrigatório porque o texto das legendas será enviado ao
-endpoint. A glosa retornada é automática, recebe temporização estimada e exige
-revisão humana; este comando ainda não produz o vídeo do avatar.
-
-Quando um renderer produzir um `avatar.mp4` com a mesma timeline da origem, o
-SINAL valida as durações e cria o vídeo final preservando áudio e legendas:
-
+### 5. Compor o vídeo final
 ```bash
-sinal compose video-sinal.mp4 \
-  --avatar avatar.mp4 \
-  --position bottom-right \
-  --output video-final.mp4
+sinal compose video.mp4 --avatar avatar.mp4 --position bottom-right -o video-final.mp4
 ```
 
-O avatar pode ocupar de 0 a 100% da largura com `--scale` (padrão `0.28`). O
-compositor não aceita silenciosamente timelines diferentes.
-
-O Whisper não é executado nesta fase.
+### 6. Executar o pipeline completo em um único comando
+```bash
+sinal process video.mp4 --srt video.srt --render --position bottom-right -o video-final.mp4
+```
 
 ## Testes
 

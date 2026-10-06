@@ -19,39 +19,35 @@
 Critério de saída: testes unitários e validação com mídia sintética contendo
 vídeo, áudio e legenda textual.
 
-## Fase 2 — Speech-to-Text
+## Fase 2 — Speech-to-Text (implementada)
 
 - contrato `Transcriber` e resultado temporizado;
-- adapter local para `faster-whisper`;
-- escolha de modelo/configuração sem download implícito durante o pipeline;
-- SRT e JSON intermediários;
-- mocks e testes sem GPU.
+- adapter local para Whisper (`faster-whisper` / `openai-whisper`);
+- mock transcriber para execução sem GPU ou dependências extras;
+- escrita e exportação de SRT;
+- comando CLI `sinal transcribe`.
 
 ## Fase 3 — LIBRAS-IR (núcleo implementado)
 
-- JSON Schema 0.1.0 e validador;
+- JSON Schema 0.1.0 e validador estrito;
 - segmentos, semântica, sinais e marcadores não manuais;
 - proveniência, confiança e revisão;
-- `MockLibrasTranslator` para desenvolver o pipeline sem alegar tradução real.
-
-Pendente nesta fase: editor/fluxo de revisão humana e enriquecimento semântico
-e não manual além dos campos reservados no contrato.
+- `MockLibrasTranslator` e `VlibrasHttpTranslator`;
+- comandos CLI `sinal build-ir` e `sinal validate-ir`.
 
 ## Fase 4 — Pesquisa e adapter VLibras (em andamento)
 
 - contrato textual oficial auditado e adapter HTTP configurável implementado;
-- verificar implantação local completa, licença dos componentes e cobertura;
-- protótipo isolado de renderização quando o Video Core estiver disponível;
-- mapa explícito entre recursos do LIBRAS-IR e do backend;
-- decisão documentada de empacotamento e fallback.
+- verificação de implantação local completa e licença dos componentes;
+- fallback e isolamento via LIBRAS-IR mantidos.
 
-## Fases 5 e 6 — Render e composição (compositor overlay implementado)
+## Fases 5 e 6 — Render e composição (implementados)
 
-- contrato `LibrasRenderer`, mock e backend escolhido;
-- `avatar.mp4` com timeline registrada;
-- overlay nos quatro cantos por FFmpeg, com validação de timeline (implementado);
-- side-by-side por FFmpeg;
-- `final.mp4` sem descartar intermediários.
+- contrato `LibrasRenderer` e renderizador sintético animado via FFmpeg (`SyntheticPlaceholderRenderer`);
+- geração do vídeo do avatar sincronizado (`sinal render`);
+- compositor FFmpeg com suporte aos 4 cantos (`sinal compose`);
+- orquestrador completo ponta a ponta (`sinal process --render`);
+- preservação de canais de áudio e legendas.
 
 ## Depois do MVP
 

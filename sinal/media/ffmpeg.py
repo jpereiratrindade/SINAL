@@ -119,3 +119,36 @@ def run_ffmpeg(
         raise FFmpegProcessError(program, result.returncode, result.stderr)
     return result
 
+
+_DETECTED_ENCODER: tuple[str, list[str]] | None = None
+
+
+def detect_video_encoder(
+    executable: str | None = None,
+) -> tuple[str, list[str]]:
+    """Detecta o melhor encoder de vídeo H.264/compatível disponível no FFmpeg."""
+
+    global _DETECTED_ENCODER
+    if _DETECTED_ENCODER is not None and executable is None:
+        return _DETECTED_ENCODER
+
+    program = executable or os.environ.get("SINAL_FFMPEG", "ffmpeg")
+    result = _run(program, ["-encoders"])
+    encoders_text = result.stdout if result.returncode == 0 else ""
+
+    if "libx264" in encoders_text:
+        encoder = ("libx264", ["-preset", "medium", "-crf", "20"])
+    elif "libopenh264" in encoders_text:
+        encoder = ("libopenh264", ["-b:v", "2M"])
+    elif "libsvtav1" in encoders_text:
+        encoder = ("libsvtav1", ["-crf", "28"])
+    elif "mpeg4" in encoders_text:
+        encoder = ("mpeg4", ["-qscale:v", "3"])
+    else:
+        encoder = ("libopenh264", [])
+
+    if executable is None:
+        _DETECTED_ENCODER = encoder
+    return encoder
+
+

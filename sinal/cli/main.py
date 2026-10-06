@@ -22,7 +22,16 @@ from sinal.libras.translator import LibrasTranslationError
 from sinal.media.ffmpeg import FFmpegError
 from sinal.media.prepare import prepare_media
 from sinal.media.probe import MediaInfo, format_duration, inspect_media
-from sinal.media.subtitles import NoSubtitleStreamError, extract_subtitles, load_srt
+from sinal.media.subtitles import (
+    NoSubtitleStreamError,
+    extract_subtitles,
+    format_timestamp,
+    load_srt,
+    write_srt,
+)
+from sinal.pipeline import run_pipeline
+from sinal.render import LibrasRenderError, render_libras
+from sinal.transcription import TranscriptionError, transcribe_media
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -56,16 +65,66 @@ def _parser() -> argparse.ArgumentParser:
         "--overwrite", action="store_true", help="substitui o arquivo de saída"
     )
 
+    transcribe_parser = commands.add_parser(
+        "transcribe", help="transcreve o áudio da mídia para um arquivo SRT"
+    )
+    transcribe_parser.add_argument("media", type=Path, help="arquivo de mídia/áudio")
+    transcribe_parser.add_argument(
+        "-o", "--output", type=Path, help="arquivo SRT de saída (padrão: <mídia>.srt)"
+    )
+    transcribe_parser.add_argument(
+        "--engine",
+        choices=("mock", "whisper"),
+        default="mock",
+        help="motor de transcrição (padrão: %(default)s)",
+    )
+    transcribe_parser.add_argument(
+        "--overwrite", action="store_true", help="substitui o arquivo de saída"
+    )
+
     process_parser = commands.add_parser(
         "process",
-        help="valida vídeo + SRT e prepara um MP4 com legenda selecionável",
+        help="executa o pipeline SINAL de preparação, LIBRAS-IR, render e composição",
     )
     process_parser.add_argument("media", type=Path, help="arquivo de vídeo")
     process_parser.add_argument(
-        "--srt", required=True, type=Path, help="arquivo SRT externo"
+        "--srt", type=Path, help="arquivo SRT externo opcional"
     )
     process_parser.add_argument(
-        "-o", "--output", type=Path, help="MP4/MOV de saída (padrão: <vídeo>.sinal.mp4)"
+        "-o", "--output", type=Path, help="MP4/MOV final de saída (padrão: <vídeo>.sinal.mp4)"
+    )
+    process_parser.add_argument(
+        "--render",
+        action="store_true",
+        help="renderiza o avatar de Libras e compõe o vídeo final automaticamente",
+    )
+    process_parser.add_argument(
+        "--engine",
+        choices=("mock", "vlibras"),
+        default="mock",
+        help="motor de tradução LIBRAS-IR (padrão: %(default)s)",
+    )
+    process_parser.add_argument(
+        "--endpoint",
+        default="http://127.0.0.1:3000",
+        help="URL base de uma instância VLibras API (padrão: %(default)s)",
+    )
+    process_parser.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="autoriza o envio do texto ao endpoint VLibras",
+    )
+    process_parser.add_argument(
+        "--position",
+        choices=sorted(POSITIONS),
+        default="bottom-right",
+        help="posição do avatar no vídeo (padrão: %(default)s)",
+    )
+    process_parser.add_argument(
+        "--scale",
+        type=float,
+        default=0.28,
+        help="fração da largura ocupada pelo avatar (padrão: %(default)s)",
     )
     process_parser.add_argument(
         "--language", default="por", help="idioma ISO 639 da legenda (padrão: por)"
@@ -106,6 +165,26 @@ def _parser() -> argparse.ArgumentParser:
         "validate-ir", help="valida um documento LIBRAS-IR 0.1.0"
     )
     validate_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
+
+    render_parser = commands.add_parser(
+        "render", help="renderiza um vídeo de avatar de Libras a partir do LIBRAS-IR"
+    )
+    render_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
+    render_parser.add_argument(
+        "--media", type=Path, help="mídia de origem de referência para a duração"
+    )
+    render_parser.add_argument(
+        "--duration", type=float, help="duração total do vídeo em segundos"
+    )
+    render_parser.add_argument(
+        "-o", "--output", type=Path, help="MP4 de saída do avatar (padrão: <document>.avatar.mp4)"
+    )
+    render_parser.add_argument(
+        "--fps", type=int, default=30, help="taxa de quadros por segundo (padrão: %(default)s)"
+    )
+    render_parser.add_argument(
+        "--overwrite", action="store_true", help="substitui o arquivo de saída"
+    )
 
     compose_parser = commands.add_parser(
         "compose", help="sobrepõe um vídeo de avatar já sincronizado à mídia"
@@ -227,7 +306,43 @@ def main(arguments: Sequence[str] | None = None) -> int:
             print(f"Subtitle extracted: {destination}")
             return 0
 
+        if args.command == "transcribe":
+            logger.debug("transcribing %s", args.media)
+            cues = transcribe_media(args.media, engine=args.engine)
+            destination = write_srt(
+                cues,
+                args.output or args.media.with_suffix(".srt"),
+                overwrite=args.overwrite,
+            )
+            print(f"Transcription completed ({len(cues)} cues): {destination}")
+            return 0
+
         if args.command == "process":
+            if args.render:
+                logger.debug("running full pipeline on %s", args.media)
+                result = run_pipeline(
+                    args.media,
+                    srt_path=args.srt,
+                    output_path=args.output,
+                    engine=args.engine,
+                    endpoint=args.endpoint,
+                    allow_network=args.allow_network,
+                    render=True,
+                    position=args.position,
+                    scale=args.scale,
+                    overwrite=args.overwrite,
+                )
+                print(f"Media prepared: {result.prepared_media}")
+                print(f"LIBRAS-IR generated: {result.ir_path}")
+                if result.avatar_path:
+                    print(f"Avatar rendered: {result.avatar_path}")
+                if result.final_video:
+                    print(f"Final video composed: {result.final_video}")
+                return 0
+
+            # Modo de preparação básica de mídia
+            if not args.srt:
+                raise ValueError("especifique --srt ou use --render para executar o pipeline completo")
             logger.debug("preparing %s with subtitles %s", args.media, args.srt)
             destination = prepare_media(
                 args.media,
@@ -271,6 +386,24 @@ def main(arguments: Sequence[str] | None = None) -> int:
             )
             return 0
 
+        if args.command == "render":
+            logger.debug("rendering %s", args.document)
+            document = load_ir(args.document)
+            duration = args.duration
+            if duration is None and args.media is not None:
+                info = inspect_media(args.media)
+                duration = info.duration_seconds
+
+            destination = render_libras(
+                document,
+                args.output or args.document.with_suffix(".avatar.mp4"),
+                duration=duration,
+                fps=args.fps,
+                overwrite=args.overwrite,
+            )
+            print(f"Libras avatar rendered: {destination}")
+            return 0
+
         if args.command == "compose":
             destination = compose_libras_video(
                 args.media,
@@ -292,6 +425,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
         ValueError,
         FFmpegError,
         LibrasTranslationError,
+        LibrasRenderError,
+        TranscriptionError,
     ) as error:
         print(f"SINAL error: {error}", file=sys.stderr)
         return 1
