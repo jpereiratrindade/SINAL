@@ -191,15 +191,13 @@ def get_sign_pose(sign_id: str, phase: float = 0.5) -> BodyPose3D:
             mouth_open=base_pose.mouth_open,
         )
 
-    # Pose padrão calculada dinamicamente para sinais não catalogados
-    h = hash(clean_id) % 1000 / 1000.0
-    r_wrist = Vec3(0.12 + (h * 0.14), 0.10 + ((h * 7 % 10) * 0.02), 0.28)
-    l_wrist = Vec3(-0.12 - ((1.0 - h) * 0.12), 0.08 + ((h * 3 % 10) * 0.02), 0.26)
+    # Para sinais não catalogados: mantém postura neutra no espaço de sinalização
+    # sem inventar movimentos aleatórios arbitrários via hash.
     return BodyPose3D(
-        left_elbow=Vec3(-0.24, 0.0, 0.14),
-        left_wrist=l_wrist,
-        right_elbow=Vec3(0.24, 0.0, 0.14),
-        right_wrist=r_wrist,
-        left_hand=HandPose(0.2, 0.1, 0.1, 0.2, 0.2),
-        right_hand=HandPose(0.1, 0.0, 0.0, 0.1, 0.1),
+        left_elbow=Vec3(-0.24, -0.02, 0.12),
+        left_wrist=Vec3(-0.12, 0.08, 0.24),
+        right_elbow=Vec3(0.24, -0.02, 0.12),
+        right_wrist=Vec3(0.12, 0.08, 0.24),
+        left_hand=HandPose(0.2, 0.2, 0.2, 0.2, 0.2),
+        right_hand=HandPose(0.2, 0.2, 0.2, 0.2, 0.2),
     )

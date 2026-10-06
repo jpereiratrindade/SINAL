@@ -215,6 +215,19 @@ def _parser() -> argparse.ArgumentParser:
     compose_parser.add_argument(
         "--overwrite", action="store_true", help="substitui o arquivo de saída"
     )
+
+    export_parser = commands.add_parser(
+        "export-avatar", help="exporta o modelo 3D da SINA em formato padrão GLB / glTF 2.0"
+    )
+    export_parser.add_argument(
+        "-o", "--output", type=Path, default=Path("sina.glb"), help="arquivo de saída .glb (padrão: %(default)s)"
+    )
+    export_parser.add_argument(
+        "--pose", default="REST", help="pose da SINA a exportar (ex: REST, OLA, OI, COMPLEXO, CHEIO, VIDA)"
+    )
+    export_parser.add_argument(
+        "--overwrite", action="store_true", help="substitui o arquivo de saída"
+    )
     return parser
 
 
@@ -420,6 +433,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 overwrite=args.overwrite,
             )
             print(f"Libras video composed: {destination}")
+            return 0
+
+        if args.command == "export-avatar":
+            from sinal.avatar.gltf_export import export_sina_glb
+            from sinal.render.poses import get_sign_pose
+            dest = Path(args.output)
+            if dest.exists() and not args.overwrite:
+                raise FileExistsError(f"arquivo de saída já existe: {dest}; use --overwrite para substituir")
+            pose = get_sign_pose(args.pose, 1.0)
+            exported = export_sina_glb(dest, pose=pose)
+            print(f"SINA 3D model exported: {exported} (glTF 2.0 / GLB)")
             return 0
     except NoSubtitleStreamError:
         print("No subtitle stream found.", file=sys.stderr)

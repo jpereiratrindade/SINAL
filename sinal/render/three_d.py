@@ -63,8 +63,59 @@ def _shade_color(base_color: Color, normal: Vec3) -> Color:
     )
 
 
+_SINA_MODEL_CACHE = None
+
+
+def _get_sina_model():
+    global _SINA_MODEL_CACHE
+    if _SINA_MODEL_CACHE is None:
+        from sinal.avatar.sina import SinaAvatarModel
+        _SINA_MODEL_CACHE = SinaAvatarModel()
+    return _SINA_MODEL_CACHE
+
+
+def _draw_ellipsoid(buffer: bytearray, w: int, h: int, params: tuple) -> None:
+    center, radii, base_color, highlight_color = params
+    proj = DEFAULT_CAMERA.project(center, w, h)
+    if proj is None:
+        return
+
+    sx, sy, depth = proj
+    fov_factor = w / (depth * math.tan(DEFAULT_CAMERA.fov_rad / 2.0))
+    prx = max(1, round(radii.x * fov_factor))
+    pry = max(1, round(radii.y * fov_factor))
+
+    min_x = max(0, round(sx - prx))
+    max_x = min(w - 1, round(sx + prx))
+    min_y = max(0, round(sy - pry))
+    max_y = min(h - 1, round(sy + pry))
+
+    rx_sq = prx * prx
+    ry_sq = pry * pry
+
+    for py in range(min_y, max_y + 1):
+        dy = py - sy
+        dy_term = (dy * dy) / ry_sq
+        if dy_term > 1.0:
+            continue
+        row_idx = py * w * 3
+        for px in range(min_x, max_x + 1):
+            dx = px - sx
+            dist_norm = (dx * dx) / rx_sq + dy_term
+            if dist_norm <= 1.0:
+                nz = math.sqrt(max(0.0, 1.0 - dist_norm))
+                nx = dx / prx
+                ny = -dy / pry
+                normal = Vec3(nx / radii.x, ny / radii.y, nz / radii.z).normalize()
+                shaded = _shade_color(base_color, normal)
+                idx = row_idx + px * 3
+                buffer[idx] = shaded[0]
+                buffer[idx + 1] = shaded[1]
+                buffer[idx + 2] = shaded[2]
+
+
 def _draw_sphere(buffer: bytearray, w: int, h: int, params: tuple) -> None:
-    center, radius, base_color = params
+    center, radius, base_color, _ = params if len(params) == 4 else (*params, base_color)
     proj = DEFAULT_CAMERA.project(center, w, h)
     if proj is None:
         return
@@ -98,77 +149,13 @@ def _draw_sphere(buffer: bytearray, w: int, h: int, params: tuple) -> None:
 
 
 def _draw_capsule(buffer: bytearray, w: int, h: int, params: tuple) -> None:
-    p1, p2, radius, base_color = params
+    p1, p2, radius, base_color, _ = params if len(params) == 5 else (*params, base_color)
     dist = (p2 - p1).length()
-    steps = max(2, min(8, round(dist / (radius * 0.9))))
+    steps = max(16, min(64, round(dist / (radius * 0.15))))
     for i in range(steps + 1):
         t = i / steps
         p = p1.lerp(p2, t)
-        _draw_sphere(buffer, w, h, (p, radius, base_color))
-
-
-def _add_sphere_3d(draw_list: list, center: Vec3, radius: float, color: Color) -> None:
-    p_proj = DEFAULT_CAMERA.project(center, 1000, 1000)
-    if p_proj is not None:
-        draw_list.append((p_proj[2], "sphere", (center, radius, color)))
-
-
-def _add_cylinder_3d(draw_list: list, p1: Vec3, p2: Vec3, radius: float, color: Color) -> None:
-    mid = p1.lerp(p2, 0.5)
-    p_proj = DEFAULT_CAMERA.project(mid, 1000, 1000)
-    if p_proj is not None:
-        draw_list.append((p_proj[2], "capsule", (p1, p2, radius, color)))
-
-
-def _add_box_3d(draw_list: list, center: Vec3, size: Vec3, color: Color) -> None:
-    p_top = center + Vec3(0, size.y * 0.35, 0)
-    p_bot = center - Vec3(0, size.y * 0.35, 0)
-    _add_cylinder_3d(draw_list, p_top, p_bot, size.x * 0.45, color)
-
-
-def _add_head_3d(draw_list: list, center: Vec3, pose: BodyPose3D) -> None:
-    rot = pose.head_rotation
-    head_c = center + Vec3(rot.x * 0.05, rot.y * 0.05, 0.0)
-
-    _add_sphere_3d(draw_list, head_c + Vec3(0, 0.03, -0.02), 0.125, HAIR_COLOR)
-    _add_sphere_3d(draw_list, head_c, 0.118, SKIN_BASE)
-
-    eye_y = head_c.y + 0.015
-    eye_z = head_c.z + 0.105
-    _add_sphere_3d(draw_list, Vec3(head_c.x - 0.042, eye_y, eye_z), 0.022, EYE_WHITE)
-    _add_sphere_3d(draw_list, Vec3(head_c.x + 0.042, eye_y, eye_z), 0.022, EYE_WHITE)
-    _add_sphere_3d(draw_list, Vec3(head_c.x - 0.042, eye_y, eye_z + 0.012), 0.011, PUPIL_COLOR)
-    _add_sphere_3d(draw_list, Vec3(head_c.x + 0.042, eye_y, eye_z + 0.012), 0.011, PUPIL_COLOR)
-
-    brow_y = eye_y + 0.032 + pose.eyebrow_raise * 0.015
-    _add_cylinder_3d(draw_list, Vec3(head_c.x - 0.065, brow_y, eye_z + 0.005), Vec3(head_c.x - 0.020, brow_y + 0.005, eye_z + 0.005), 0.006, HAIR_COLOR)
-    _add_cylinder_3d(draw_list, Vec3(head_c.x + 0.020, brow_y + 0.005, eye_z + 0.005), Vec3(head_c.x + 0.065, brow_y, eye_z + 0.005), 0.006, HAIR_COLOR)
-
-    _add_sphere_3d(draw_list, Vec3(head_c.x, eye_y - 0.028, eye_z + 0.025), 0.016, SKIN_SHADOW)
-    mouth_y = eye_y - 0.060
-    _add_cylinder_3d(draw_list, Vec3(head_c.x - 0.028, mouth_y, eye_z + 0.01), Vec3(head_c.x + 0.028, mouth_y, eye_z + 0.01), 0.009, LIP_COLOR)
-
-
-def _add_hand_3d(draw_list: list, wrist: Vec3, is_right: bool, hand_pose: Any) -> None:
-    dir_mult = 1.0 if is_right else -1.0
-    palm_center = wrist + Vec3(0.02 * dir_mult, 0.04, 0.04)
-    _add_sphere_3d(draw_list, palm_center, 0.038, SKIN_BASE)
-
-    finger_spreads = [
-        (-0.025 * dir_mult, -0.01, hand_pose.thumb),
-        (-0.015 * dir_mult, 0.032, hand_pose.index),
-        (0.000, 0.036, hand_pose.middle),
-        (0.015 * dir_mult, 0.032, hand_pose.ring),
-        (0.025 * dir_mult, 0.024, hand_pose.pinky),
-    ]
-
-    for fx, fy, flex in finger_spreads:
-        f_base = palm_center + Vec3(fx, fy, 0.01)
-        curl_z = (1.0 - flex) * 0.035 - flex * 0.015
-        curl_y = (1.0 - flex) * 0.030 - flex * 0.010
-        f_tip = f_base + Vec3(fx * 0.4, curl_y, curl_z)
-        _add_cylinder_3d(draw_list, f_base, f_tip, 0.011, SKIN_BASE)
-        _add_sphere_3d(draw_list, f_tip, 0.010, SKIN_SHADOW)
+        _draw_sphere(buffer, w, h, (p, radius, base_color, base_color))
 
 
 def _put_pixel(buffer: bytearray, w: int, h: int, x: int, y: int, r: int, g: int, b: int) -> None:
@@ -199,36 +186,12 @@ def _render_frame_standalone(
             buffer[idx + 1] = bg_g
             buffer[idx + 2] = bg_b
 
-    draw_list: list[tuple[float, str, Any]] = []
-
-    torso_center = Vec3(0.0, 0.12, 0.0)
-    neck_pos = Vec3(0.0, 0.32, 0.0)
-    head_pos = Vec3(0.0, 0.44, 0.0)
-    l_shoulder = Vec3(-0.20, 0.26, 0.0)
-    r_shoulder = Vec3(0.20, 0.26, 0.0)
-
-    _add_box_3d(draw_list, torso_center, Vec3(0.42, 0.36, 0.22), SHIRT_BASE)
-    _add_cylinder_3d(draw_list, neck_pos + Vec3(0, -0.06, 0), neck_pos + Vec3(0, 0.04, 0), 0.065, SKIN_BASE)
-    _add_head_3d(draw_list, head_pos, pose)
-
-    _add_sphere_3d(draw_list, l_shoulder, 0.06, SHIRT_LIGHT)
-    _add_cylinder_3d(draw_list, l_shoulder, pose.left_elbow, 0.052, SHIRT_BASE)
-    _add_sphere_3d(draw_list, pose.left_elbow, 0.052, SHIRT_LIGHT)
-    _add_cylinder_3d(draw_list, pose.left_elbow, pose.left_wrist, 0.045, SKIN_BASE)
-    _add_sphere_3d(draw_list, pose.left_wrist, 0.042, SKIN_BASE)
-    _add_hand_3d(draw_list, pose.left_wrist, is_right=False, hand_pose=pose.left_hand)
-
-    _add_sphere_3d(draw_list, r_shoulder, 0.06, SHIRT_LIGHT)
-    _add_cylinder_3d(draw_list, r_shoulder, pose.right_elbow, 0.052, SHIRT_BASE)
-    _add_sphere_3d(draw_list, pose.right_elbow, 0.052, SHIRT_LIGHT)
-    _add_cylinder_3d(draw_list, pose.right_elbow, pose.right_wrist, 0.045, SKIN_BASE)
-    _add_sphere_3d(draw_list, pose.right_wrist, 0.042, SKIN_BASE)
-    _add_hand_3d(draw_list, pose.right_wrist, is_right=True, hand_pose=pose.right_hand)
-
-    draw_list.sort(key=lambda item: item[0], reverse=True)
+    draw_list = _get_sina_model().build_scene_primitives(pose)
 
     for _depth, shape_type, params in draw_list:
-        if shape_type == "sphere":
+        if shape_type == "ellipsoid":
+            _draw_ellipsoid(buffer, w, h, params)
+        elif shape_type == "sphere":
             _draw_sphere(buffer, w, h, params)
         elif shape_type == "capsule":
             _draw_capsule(buffer, w, h, params)
@@ -265,33 +228,21 @@ def _render_frame_standalone(
     return bytes(buffer)
 
 
+from sinal.animation.motion import CoarticulationTimeline, SignTimelineItem, MotionLibrary
+
+_GLOBAL_MOTION_LIB = MotionLibrary()
+
+
 def _render_frame_task(task_args: tuple) -> tuple[int, bytes]:
-    frame_idx, w, h, fps, timeline = task_args
+    frame_idx, w, h, fps, timeline_raw = task_args
     current_time = frame_idx / fps
 
-    active_sign: tuple[str, str, float] | None = None
-    for s_start, s_end, sign_id, src_text in timeline:
-        if s_start <= current_time <= s_end:
-            duration_s = max(0.01, s_end - s_start)
-            progress = (current_time - s_start) / duration_s
-            active_sign = (sign_id, src_text, progress)
-            break
-
-    if active_sign is not None:
-        sign_id, _src_text, progress = active_sign
-        target_pose = get_sign_pose(sign_id, progress)
-        blend = math.sin(progress * math.pi)
-        current_pose = POSE_REST.lerp(target_pose, blend)
-    else:
-        idle_breath = math.sin(current_time * 2.0) * 0.005
-        current_pose = BodyPose3D(
-            left_elbow=POSE_REST.left_elbow + Vec3(0, idle_breath * 0.5, 0),
-            left_wrist=POSE_REST.left_wrist + Vec3(0, idle_breath, 0),
-            right_elbow=POSE_REST.right_elbow + Vec3(0, idle_breath * 0.5, 0),
-            right_wrist=POSE_REST.right_wrist + Vec3(0, idle_breath, 0),
-            left_hand=POSE_REST.left_hand,
-            right_hand=POSE_REST.right_hand,
-        )
+    items = [
+        SignTimelineItem(start=s[0], end=s[1], sign_id=s[2], source_text=s[3])
+        for s in timeline_raw
+    ]
+    solver = CoarticulationTimeline(items, _GLOBAL_MOTION_LIB)
+    current_pose, active_sign = solver.get_pose_at(current_time)
 
     frame_bytes = _render_frame_standalone(w, h, current_pose, active_sign)
     return (frame_idx, frame_bytes)
