@@ -117,6 +117,28 @@ def _parser() -> argparse.ArgumentParser:
         help="URL base de uma instância VLibras API (padrão: %(default)s)",
     )
     process_parser.add_argument(
+        "--vlibras-root",
+        type=Path,
+        help="checkout compilado do player web oficial (ou SINAL_VLIBRAS_WEB_ROOT)",
+    )
+    process_parser.add_argument(
+        "--chromium",
+        type=Path,
+        help="Chromium do Playwright (ou SINAL_VLIBRAS_CHROMIUM)",
+    )
+    process_parser.add_argument(
+        "--render-timeout",
+        type=float,
+        default=600.0,
+        help="tempo máximo da captura VLibras, em segundos",
+    )
+    process_parser.add_argument(
+        "--avatar",
+        choices=("hosana", "icaro", "guga"),
+        default="hosana",
+        help="avatar oficial do VLibras (padrão: %(default)s)",
+    )
+    process_parser.add_argument(
         "--allow-network",
         action="store_true",
         help="autoriza o envio do texto ao endpoint VLibras",
@@ -174,7 +196,7 @@ def _parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
 
     render_parser = commands.add_parser(
-        "render", help="gera preview procedural; a saída não é Libras publicável"
+        "render", help="renderiza via VLibras oficial ou gera preview procedural"
     )
     render_parser.add_argument("document", type=Path, help="arquivo JSON LIBRAS-IR")
     render_parser.add_argument(
@@ -188,6 +210,45 @@ def _parser() -> argparse.ArgumentParser:
     )
     render_parser.add_argument(
         "--fps", type=int, default=30, help="taxa de quadros por segundo (padrão: %(default)s)"
+    )
+    render_parser.add_argument(
+        "--width", type=int, default=800, help="largura da captura (padrão: %(default)s)"
+    )
+    render_parser.add_argument(
+        "--height", type=int, default=600, help="altura da captura (padrão: %(default)s)"
+    )
+    render_parser.add_argument(
+        "--backend",
+        choices=("vlibras", "preview"),
+        default="vlibras",
+        help="backend de renderização (padrão: %(default)s)",
+    )
+    render_parser.add_argument(
+        "--vlibras-root",
+        type=Path,
+        help="checkout compilado do player web oficial (ou SINAL_VLIBRAS_WEB_ROOT)",
+    )
+    render_parser.add_argument(
+        "--avatar",
+        choices=("hosana", "icaro", "guga"),
+        default="hosana",
+        help="avatar oficial do VLibras (padrão: %(default)s)",
+    )
+    render_parser.add_argument(
+        "--render-timeout",
+        type=float,
+        default=600.0,
+        help="tempo máximo da captura VLibras, em segundos",
+    )
+    render_parser.add_argument(
+        "--chromium",
+        type=Path,
+        help="Chromium do Playwright (ou SINAL_VLIBRAS_CHROMIUM)",
+    )
+    render_parser.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="autoriza o player a carregar movimentos do dicionário oficial VLibras",
     )
     render_parser.add_argument(
         "--motion-catalog",
@@ -373,6 +434,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
                     position=args.position,
                     scale=args.scale,
                     motion_catalog=args.motion_catalog,
+                    vlibras_root=args.vlibras_root,
+                    chromium=args.chromium,
+                    render_timeout=args.render_timeout,
+                    avatar=args.avatar,
                     overwrite=args.overwrite,
                 )
                 print(f"Media prepared: {result.prepared_media}")
@@ -472,19 +537,55 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 info = inspect_media(args.media)
                 duration = info.duration_seconds
 
-            destination = render_libras(
-                document,
-                args.output or args.document.with_suffix(".avatar.mp4"),
-                duration=duration,
-                fps=args.fps,
-                overwrite=args.overwrite,
-                motion_catalog=args.motion_catalog,
-                allow_unreviewed_preview=args.allow_unreviewed_preview,
-            )
-            print(f"Technical avatar preview rendered (NOT validated Libras): {destination}")
+            output = args.output or args.document.with_suffix(".avatar.mp4")
+            if args.backend == "vlibras":
+                if not args.allow_network:
+                    raise ValueError(
+                        "--backend vlibras requer --allow-network para autorizar o "
+                        "carregamento dos movimentos oficiais"
+                    )
+                from sinal.render.vlibras import VlibrasWebRenderer, VlibrasWebRuntime
+
+                runtime = VlibrasWebRuntime.from_environment(
+                    args.vlibras_root,
+                    chromium_executable=args.chromium,
+                    timeout_seconds=args.render_timeout,
+                )
+                destination = render_libras(
+                    document,
+                    output,
+                    renderer=VlibrasWebRenderer(runtime, avatar=args.avatar),
+                    duration=duration,
+                    width=args.width,
+                    height=args.height,
+                    fps=args.fps,
+                    overwrite=args.overwrite,
+                )
+                print(f"Official VLibras web avatar rendered ({args.avatar}): {destination}")
+            else:
+                destination = render_libras(
+                    document,
+                    output,
+                    duration=duration,
+                    width=args.width,
+                    height=args.height,
+                    fps=args.fps,
+                    overwrite=args.overwrite,
+                    motion_catalog=args.motion_catalog,
+                    allow_unreviewed_preview=True,
+                )
+                print(f"Technical avatar preview rendered (NOT validated Libras): {destination}")
             return 0
 
         if args.command == "compose":
+            from sinal.render.vlibras import read_render_provenance
+
+            provenance = read_render_provenance(args.avatar)
+            if provenance is not None and provenance.get("timeline_synchronized") is False:
+                raise LibrasRenderError(
+                    "composição bloqueada: o sidecar informa que a Libras não está "
+                    "sincronizada à mídia; não acelere sinais para fazê-los caber"
+                )
             destination = compose_libras_video(
                 args.media,
                 args.avatar,

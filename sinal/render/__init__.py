@@ -17,6 +17,8 @@ __all__ = [
     "LibrasRenderer",
     "SyntheticPlaceholderRenderer",
     "ThreeDLibrasRenderer",
+    "VlibrasWebRuntime",
+    "VlibrasWebRenderer",
     "render_libras",
 ]
 
@@ -80,4 +82,11 @@ def __getattr__(name: str):
         from sinal.render.three_d import ThreeDLibrasRenderer
 
         return ThreeDLibrasRenderer
+    if name in {"VlibrasWebRuntime", "VlibrasWebRenderer"}:
+        from sinal.render.vlibras import VlibrasWebRenderer, VlibrasWebRuntime
+
+        return {
+            "VlibrasWebRuntime": VlibrasWebRuntime,
+            "VlibrasWebRenderer": VlibrasWebRenderer,
+        }[name]
     raise AttributeError(name)

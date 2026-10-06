@@ -43,6 +43,10 @@ def run_pipeline(
     scale: float = 0.28,
     margin: int = 24,
     motion_catalog: str | Path | None = None,
+    vlibras_root: str | Path | None = None,
+    chromium: str | Path | None = None,
+    render_timeout: float = 600.0,
+    avatar: str = "hosana",
     overwrite: bool = False,
 ) -> PipelineResult:
     """Executa o pipeline completo: preparação, legendas, LIBRAS-IR, render e composição."""
@@ -111,13 +115,34 @@ def run_pipeline(
     # 4. Renderiza o avatar de Libras e compõe o vídeo final
     if render:
         avatar_file = source.with_name(f"{source.stem}.avatar.mp4")
-        render_libras(
-            ir_document,
-            avatar_file,
-            duration=duration,
-            overwrite=overwrite,
-            motion_catalog=motion_catalog,
-        )
+        if engine == "vlibras":
+            from sinal.render.vlibras import VlibrasWebRenderer, VlibrasWebRuntime
+
+            video_renderer = VlibrasWebRenderer(
+                VlibrasWebRuntime.from_environment(
+                    vlibras_root,
+                    chromium_executable=chromium,
+                    timeout_seconds=render_timeout,
+                ),
+                avatar=avatar,
+            )
+            render_libras(
+                ir_document,
+                avatar_file,
+                renderer=video_renderer,
+                duration=duration,
+                width=800,
+                height=600,
+                overwrite=overwrite,
+            )
+        else:
+            render_libras(
+                ir_document,
+                avatar_file,
+                duration=duration,
+                overwrite=overwrite,
+                motion_catalog=motion_catalog,
+            )
 
         final_dest = (
             Path(output_path)

@@ -9,9 +9,9 @@ composição. Ele não trata Libras como substituição palavra por palavra do
 português.
 
 > Estado atual: o pipeline de mídia e o contrato LIBRAS-IR estão implementados.
-> A renderização procedural é somente uma pré-visualização técnica. A saída de
-> produção fica bloqueada até receber tradução humana revisada e um catálogo com
-> cobertura integral de movimentos de Libras também revisados.
+> A renderização procedural é somente uma pré-visualização técnica. Para vídeo
+> real, o SINAL captura o player web oficial do VLibras e preserva a velocidade
+> natural dos sinais. Traduções automáticas continuam exigindo revisão humana.
 
 ## O que já funciona
 
@@ -23,11 +23,11 @@ português.
 - parser e escritor SRT com timestamps e texto multilinha;
 - geração e validação estrita do LIBRAS-IR 0.1.0;
 - mock honesto, que registra tradução pendente sem inventar sinais;
-- adapter opcional para o endpoint de tradução de uma instância VLibras API;
+- adaptadores para tradução textual e captura do player WebGL oficial atual;
 - auditoria fail-closed de tradução, lacunas, proveniência e cobertura de movimentos;
 - pré-visualizador procedural sincronizado, sempre marcado visualmente como não validado;
 - compositor FFmpeg (`sinal compose`), sobrepondo o avatar nos quatro cantos (`bottom-right`, `bottom-left`, `top-right`, `top-left`) com preservação de faixas;
-- orquestrador fail-closed, que interrompe `sinal process --render` enquanto não houver backend validado;
+- orquestrador fail-closed, que bloqueia composição quando a Libras natural não cabe na timeline;
 - detecção dinâmica de encoders H.264/compatíveis no FFmpeg (suporte multiplataforma para Fedora, Ubuntu, Arch, etc.);
 - saída humana ou JSON no comando de inspeção;
 - erros explícitos e sem dependências ocultas.
@@ -37,6 +37,8 @@ português.
 - Linux;
 - Python 3.12 ou posterior;
 - FFmpeg e FFprobe acessíveis no `PATH`.
+- para o backend oficial: Node.js, Chromium/Playwright e um checkout compilado
+  de `vlibras-web-browsers` (veja [VLibras Web](docs/VLIBRAS_VIDEO.md)).
 
 No Fedora:
 
@@ -86,8 +88,9 @@ sinal transcribe video.mp4 -o video.srt --engine mock
 # Modo padrão e seguro: registra lacunas sem inventar glosas
 sinal build-ir video.srt --engine mock --output video.libras-ir.json
 
-# Ou usando uma instância VLibras local configurada
-sinal build-ir video.srt --engine vlibras --endpoint http://127.0.0.1:3000 --allow-network
+# Ou usando a tradução oficial do VLibras
+sinal build-ir video.srt --engine vlibras \
+  --endpoint https://traducao2.vlibras.gov.br --allow-network
 
 # Validar contra o esquema 0.1.0
 sinal validate-ir video.libras-ir.json
@@ -103,30 +106,46 @@ revisão humana e todos os IDs possuem movimento revisado no catálogo. Veja
 sinal audit-render video.libras-ir.json --motion-catalog motions.reviewed.json
 ```
 
-O renderer procedural ainda não possui a malha SINA rigada nem articulação
-suficiente para produção e, por isso, jamais gera saída publicável. Para depurar
-timeline e enquadramento com um aviso visível:
+Para produzir um MP4 autônomo, em velocidade natural, com a Hosana oficial:
 
 ```bash
-sinal render video.libras-ir.json --allow-unreviewed-preview -o preview.mp4
+export SINAL_VLIBRAS_WEB_ROOT='/caminho/para/vlibras-web-browsers'
+sinal render video.libras-ir.json --backend vlibras --avatar hosana \
+  --allow-network -o avatar.mp4
 ```
 
-Até a integração de um backend validado, gere o vídeo de Libras no backend
-oficial/revisado e use `sinal compose` para a composição final.
+O backend aguarda o contador do player concluir todos os sinais, valida o MP4 e
+grava `avatar.mp4.provenance.json`. Veja [VLibras Web](docs/VLIBRAS_VIDEO.md).
+
+O renderer procedural não possui a malha SINA rigada nem articulação
+suficiente para produção. Para depurar timeline e enquadramento com aviso visível:
+
+```bash
+sinal render video.libras-ir.json --backend preview -o preview.mp4
+```
 
 ### 5. Compor o vídeo final
+
+A composição só é aceita quando o sidecar confirma compatibilidade temporal.
+O SINAL não acelera sinais arbitrariamente para fazê-los caber.
+
 ```bash
 sinal compose video.mp4 --avatar avatar.mp4 --position bottom-right -o video-final.mp4
 ```
 
 ### 6. Executar o pipeline validado em um único comando
 
-Este comando permanece fail-closed: no estado atual ele prepara mídia e IR,
-mas recusa a etapa de avatar em vez de gerar gestos falsos.
+Para tradução e avatar oficiais, selecione VLibras explicitamente:
 
 ```bash
-sinal process video.mp4 --srt video.srt --render --position bottom-right -o video-final.mp4
+sinal process video.mp4 --srt video.srt --render --engine vlibras \
+  --endpoint https://traducao2.vlibras.gov.br \
+  --vlibras-root "$SINAL_VLIBRAS_WEB_ROOT" --avatar hosana \
+  --allow-network --position bottom-right -o video-final.mp4
 ```
+
+Se a interpretação natural for maior que a mídia, o vídeo de avatar e o
+diagnóstico são preservados, mas a composição final é interrompida.
 
 ## Testes
 
@@ -170,12 +189,14 @@ espalhada pelo sistema. Veja [Arquitetura](docs/ARCHITECTURE.md),
 - arquivos com múltiplas legendas exigem `--stream` quando a seleção padrão não
   for a desejada;
 - a configuração TOML é um contrato inicial e ainda não é carregada pelo CLI;
-- o adapter HTTP atual cobre somente tradução textual; o player/avatar oficial
-  do VLibras ainda não está integrado;
+- a geração oficial requer o runtime web do VLibras compilado localmente e rede
+  para obter os movimentos do dicionário oficial;
 - a imagem-conceito da SINA não é uma malha 3D rigada. O renderizador procedural
   atual não reproduz aquela identidade visual e, por isso, é apenas preview;
 - os movimentos internos são protótipos não revisados e nunca passam na auditoria
   de produção;
+- a duração da sinalização pode exceder a mídia original e exigir edição humana
+  da timeline ou pausas adicionais;
 - tradução automática não garante equivalência com interpretação humana.
 
 ## Ética e revisão

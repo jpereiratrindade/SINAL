@@ -176,7 +176,16 @@ class CliTests(unittest.TestCase):
         mock_render.return_value = Path("avatar.mp4")
         output = io.StringIO()
         with redirect_stdout(output):
-            status = main(["render", "test.libras-ir.json", "--duration", "5.0"])
+            status = main(
+                [
+                    "render",
+                    "test.libras-ir.json",
+                    "--duration",
+                    "5.0",
+                    "--backend",
+                    "preview",
+                ]
+            )
 
         self.assertEqual(status, 0)
         self.assertIn("Technical avatar preview rendered", output.getvalue())

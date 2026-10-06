@@ -16,4 +16,7 @@ output/
 *.mp4
 *.srt
 *.libras-ir.json
+*.vlibras-ir.json
+*.provenance.json
 !examples/sample.srt
+

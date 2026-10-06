@@ -35,6 +35,7 @@ include = ["sinal*"]
 
 [tool.setuptools.package-data]
 "sinal.libras" = ["schema/*.json"]
+"sinal.render.assets" = ["*.mjs", "*.html"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
