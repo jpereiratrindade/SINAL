@@ -211,3 +211,9 @@ Libras.
 A licença aberta ainda será escolhida após análise das dependências e da
 integração com VLibras. Até essa decisão, consulte o arquivo `LICENSE`: não há
 permissão de uso ou redistribuição implícita.
+
+## Premissas de desenvolvimento
+
+**Simples, leve. Sempre pronto. Sempre incompleto!**
+
+[Significado e símbolos das premissas](docs/sister-principles/README.md).
